@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { streamChat, testConnection } from './src/api';
+import { streamChat, testConnection, tryDispatchCommand } from './src/api';
 import {
   ChatMessage,
   loadHistory,
@@ -73,6 +73,17 @@ export default function App() {
     persist(next);
 
     try {
+      // /build and /jobs are handled deterministically by the gateway plugin —
+      // no LLM involved, so dispatch never depends on model tool-calling.
+      const commandResult = await tryDispatchCommand(settings, prompt);
+      if (commandResult !== null) {
+        next = next.map((m) =>
+          m.id === assistantMsg.id ? { ...m, content: commandResult, pending: false } : m,
+        );
+        persist(next);
+        setBusy(false);
+        return;
+      }
       let reply = '';
       for await (const delta of streamChat(settings, prompt)) {
         reply += delta;
