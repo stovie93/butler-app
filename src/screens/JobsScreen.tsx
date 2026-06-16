@@ -21,6 +21,7 @@ export function JobsScreen({ settings }: { settings: Settings }) {
   const [selected, setSelected] = useState<Job | null>(null);
   const [log, setLog] = useState<string>('');
   const [logLoading, setLogLoading] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<string>('');
 
   const refresh = useCallback(async () => {
     if (!settings.baseUrl) return;
@@ -44,6 +45,7 @@ export function JobsScreen({ settings }: { settings: Settings }) {
   const openJob = useCallback(
     async (job: Job) => {
       setSelected(job);
+      setLiveStatus(job.status);
       setLog('');
       setLogLoading(true);
       try {
@@ -56,6 +58,21 @@ export function JobsScreen({ settings }: { settings: Settings }) {
     },
     [settings],
   );
+
+  // While the open job is still running, poll its log + status every 3s for a live view.
+  useEffect(() => {
+    if (!selected || liveStatus !== 'running') return;
+    const t = setInterval(async () => {
+      try {
+        const [l, js] = await Promise.all([getJobLog(settings, selected.id), listJobs(settings)]);
+        setLog(l);
+        setJobs(js);
+        const updated = js.find((j) => j.id === selected.id);
+        if (updated && updated.status !== 'running') setLiveStatus(updated.status);
+      } catch {}
+    }, 3000);
+    return () => clearInterval(t);
+  }, [selected, liveStatus, settings]);
 
   return (
     <View style={styles.flex}>
@@ -101,11 +118,12 @@ export function JobsScreen({ settings }: { settings: Settings }) {
                 <Text style={styles.close}>✕</Text>
               </Pressable>
             </View>
-            <Text style={[styles.status, { color: statusColor(selected?.status ?? '') }]}>
-              {selected?.status}
+            <Text style={[styles.status, { color: statusColor(liveStatus || (selected?.status ?? '')) }]}>
+              {liveStatus || selected?.status}
+              {liveStatus === 'running' ? '  ● live' : ''}
             </Text>
             <Text style={styles.task}>{selected?.task}</Text>
-            <Text style={styles.logLabel}>Log</Text>
+            <Text style={styles.logLabel}>{liveStatus === 'running' ? 'Log (updating live…)' : 'Log'}</Text>
             <ScrollView style={styles.logBox}>
               {logLoading ? (
                 <ActivityIndicator color={COLORS.textDim} />
