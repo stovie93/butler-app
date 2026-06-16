@@ -48,8 +48,11 @@ pings the PC without opening the app.
 
 ## Prerequisites (the PC / "server" side)
 
-Butler is a **client** — it needs a host PC running the following. Setup of the host is
-outside this repo, but here's the checklist:
+Butler is a **client** — it needs a host PC running a few things. The complete host setup —
+the `code-dispatch` plugin, the dispatch/keep-awake scripts, an example config, and a
+**step-by-step guide** — lives in **[butler-gateway](https://github.com/stovie93/butler-gateway)**
+([SETUP.md](https://github.com/stovie93/butler-gateway/blob/master/SETUP.md)). In short, the
+host needs:
 
 1. **[Ollama](https://ollama.com)** with at least one chat model pulled (e.g. `gpt-oss:20b`).
 2. **[OpenClaw](https://openclaw.ai)** gateway, configured with:
