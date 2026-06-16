@@ -50,7 +50,12 @@ export async function tryDispatchCommand(
     payload = { action: 'build', project: parts[1], task: parts[2], continue: continueSession };
   } else {
     const jobs = trimmed.match(/^\/jobs(?:\s+(\S+))?$/i);
-    if (jobs) payload = { action: 'jobs', ...(jobs[1] ? { jobId: jobs[1] } : {}) };
+    if (jobs) {
+      payload = { action: 'jobs', ...(jobs[1] ? { jobId: jobs[1] } : {}) };
+    } else {
+      const awake = trimmed.match(/^\/awake(?:\s+(.+))?$/i);
+      if (awake) payload = { action: 'awake', duration: (awake[1] ?? '2h').trim() };
+    }
   }
 
   if (!payload) return null;
