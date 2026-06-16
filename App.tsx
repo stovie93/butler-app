@@ -1,190 +1,81 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { streamChat, testConnection, tryDispatchCommand } from './src/api';
-import {
-  ChatMessage,
-  loadHistory,
-  loadSettings,
-  saveHistory,
-  saveLastExchange,
-  saveSettings,
-  Settings,
-} from './src/settings';
+import { testConnection } from './src/api';
+import { ChatScreen } from './src/screens/ChatScreen';
+import { BuildScreen } from './src/screens/BuildScreen';
+import { JobsScreen } from './src/screens/JobsScreen';
+import { HelpScreen } from './src/screens/HelpScreen';
+import { loadSettings, saveSettings, Settings } from './src/settings';
+import { COLORS } from './src/theme';
 
-const COLORS = {
-  bg: '#0e1116',
-  surface: '#1a1f29',
-  surfaceAlt: '#222937',
-  accent: '#4f8cff',
-  text: '#e8ecf3',
-  textDim: '#8b93a3',
-  danger: '#ff6b6b',
-};
-
-let idCounter = 0;
-function nextId(): string {
-  idCounter += 1;
-  return `${Date.now()}-${idCounter}`;
-}
+type Tab = 'chat' | 'build' | 'jobs' | 'help';
+const TABS: { key: Tab; label: string; icon: string }[] = [
+  { key: 'chat', label: 'Chat', icon: '💬' },
+  { key: 'build', label: 'Build', icon: '🔨' },
+  { key: 'jobs', label: 'Jobs', icon: '📋' },
+  { key: 'help', label: 'Help', icon: '❓' },
+];
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>({ baseUrl: '', token: '' });
+  const [loaded, setLoaded] = useState(false);
+  const [tab, setTab] = useState<Tab>('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const listRef = useRef<FlatList<ChatMessage>>(null);
 
   useEffect(() => {
-    (async () => {
-      const [loadedSettings, history] = await Promise.all([loadSettings(), loadHistory()]);
-      setSettings(loadedSettings);
-      setMessages(history);
-      if (!loadedSettings.baseUrl) setSettingsOpen(true);
-    })();
+    loadSettings().then((s) => {
+      setSettings(s);
+      setLoaded(true);
+      if (!s.baseUrl) {
+        setTab('help');
+        setSettingsOpen(true);
+      }
+    });
   }, []);
 
-  const persist = useCallback((next: ChatMessage[]) => {
-    setMessages(next);
-    saveHistory(next).catch(() => {});
-  }, []);
-
-  const send = useCallback(async () => {
-    const prompt = input.trim();
-    if (!prompt || busy) return;
-    setInput('');
-    setBusy(true);
-
-    const userMsg: ChatMessage = { id: nextId(), role: 'user', content: prompt };
-    const assistantMsg: ChatMessage = { id: nextId(), role: 'assistant', content: '', pending: true };
-    let next = [...messages, userMsg, assistantMsg];
-    persist(next);
-
-    try {
-      // /build and /jobs are handled deterministically by the gateway plugin —
-      // no LLM involved, so dispatch never depends on model tool-calling.
-      const commandResult = await tryDispatchCommand(settings, prompt);
-      if (commandResult !== null) {
-        next = next.map((m) =>
-          m.id === assistantMsg.id ? { ...m, content: commandResult, pending: false } : m,
-        );
-        persist(next);
-        setBusy(false);
-        return;
-      }
-      let reply = '';
-      for await (const delta of streamChat(settings, prompt)) {
-        reply += delta;
-        next = next.map((m) => (m.id === assistantMsg.id ? { ...m, content: reply } : m));
-        setMessages(next);
-      }
-      next = next.map((m) =>
-        m.id === assistantMsg.id
-          ? { ...m, content: reply.trim() || '(no reply)', pending: false }
-          : m,
-      );
-      persist(next);
-      saveLastExchange(prompt, reply.trim()).catch(() => {});
-    } catch (err) {
-      next = next.map((m) =>
-        m.id === assistantMsg.id
-          ? { ...m, content: `⚠ ${err instanceof Error ? err.message : String(err)}`, pending: false }
-          : m,
-      );
-      persist(next);
-    } finally {
-      setBusy(false);
-    }
-  }, [input, busy, messages, settings, persist]);
-
-  const clearChat = useCallback(() => {
-    persist([]);
-  }, [persist]);
+  if (!loaded) {
+    return (
+      <View style={[styles.root, styles.center]}>
+        <StatusBar style="light" />
+        <ActivityIndicator color={COLORS.accent} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Butler</Text>
-        <View style={styles.headerActions}>
-          <Pressable onPress={clearChat} hitSlop={8}>
-            <Text style={styles.headerAction}>Clear</Text>
-          </Pressable>
-          <Pressable onPress={() => setSettingsOpen(true)} hitSlop={8}>
-            <Text style={styles.headerAction}>⚙</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.headerTitle}>{TABS.find((t) => t.key === tab)?.label}</Text>
+        <Pressable onPress={() => setSettingsOpen(true)} hitSlop={10}>
+          <Text style={styles.gear}>⚙</Text>
+        </Pressable>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.body}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>🤖</Text>
-              <Text style={styles.emptyText}>
-                Talk to your computer. Messages go straight to the local model running on your PC.
-              </Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.bubble,
-                item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
-              ]}
-            >
-              {item.pending && !item.content ? (
-                <ActivityIndicator color={COLORS.textDim} size="small" />
-              ) : (
-                <Text style={styles.bubbleText}>{item.content}</Text>
-              )}
-            </View>
-          )}
-        />
+      <View style={styles.body}>
+        {tab === 'chat' && <ChatScreen settings={settings} />}
+        {tab === 'build' && <BuildScreen settings={settings} />}
+        {tab === 'jobs' && <JobsScreen settings={settings} />}
+        {tab === 'help' && <HelpScreen onOpenSettings={() => setSettingsOpen(true)} />}
+      </View>
 
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder="Ask your computer…"
-            placeholderTextColor={COLORS.textDim}
-            multiline
-            editable={!busy}
-          />
-          <Pressable
-            style={[styles.sendButton, (busy || !input.trim()) && styles.sendButtonDisabled]}
-            onPress={send}
-            disabled={busy || !input.trim()}
-          >
-            {busy ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.sendButtonText}>↑</Text>
-            )}
+      <View style={styles.tabBar}>
+        {TABS.map((t) => (
+          <Pressable key={t.key} style={styles.tab} onPress={() => setTab(t.key)}>
+            <Text style={[styles.tabIcon, tab === t.key && styles.tabIconActive]}>{t.icon}</Text>
+            <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
           </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+        ))}
+      </View>
 
       <SettingsModal
         visible={settingsOpen}
@@ -230,22 +121,20 @@ function SettingsModal(props: {
   };
 
   return (
-    <Modal visible={props.visible} animationType="slide" transparent>
+    <Modal visible={props.visible} animationType="slide" transparent onRequestClose={props.onClose}>
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Gateway connection</Text>
-
           <Text style={styles.fieldLabel}>Gateway URL</Text>
           <TextInput
             style={styles.fieldInput}
             value={baseUrl}
             onChangeText={setBaseUrl}
-            placeholder="https://smithpc.your-tailnet.ts.net"
+            placeholder="https://your-pc.your-tailnet.ts.net"
             placeholderTextColor={COLORS.textDim}
             autoCapitalize="none"
             autoCorrect={false}
           />
-
           <Text style={styles.fieldLabel}>Token</Text>
           <TextInput
             style={styles.fieldInput}
@@ -257,34 +146,20 @@ function SettingsModal(props: {
             autoCorrect={false}
             secureTextEntry
           />
-
-          {testResult ? (
-            <Text
-              style={[
-                styles.testResult,
-                testResult.startsWith('✗') ? styles.testResultBad : styles.testResultGood,
-              ]}
-            >
+          {testResult && (
+            <Text style={[styles.testResult, testResult.startsWith('✗') ? styles.bad : styles.good]}>
               {testResult}
             </Text>
-          ) : null}
-
+          )}
           <View style={styles.modalActions}>
-            <Pressable style={styles.modalButtonSecondary} onPress={runTest} disabled={testing}>
-              {testing ? (
-                <ActivityIndicator color={COLORS.text} size="small" />
-              ) : (
-                <Text style={styles.modalButtonSecondaryText}>Test</Text>
-              )}
+            <Pressable style={styles.btnSecondary} onPress={runTest} disabled={testing}>
+              {testing ? <ActivityIndicator color={COLORS.text} size="small" /> : <Text style={styles.btnSecondaryText}>Test</Text>}
             </Pressable>
-            <Pressable style={styles.modalButtonSecondary} onPress={props.onClose}>
-              <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+            <Pressable style={styles.btnSecondary} onPress={props.onClose}>
+              <Text style={styles.btnSecondaryText}>Cancel</Text>
             </Pressable>
-            <Pressable
-              style={styles.modalButtonPrimary}
-              onPress={() => props.onSave({ baseUrl: baseUrl.trim(), token: token.trim() })}
-            >
-              <Text style={styles.modalButtonPrimaryText}>Save</Text>
+            <Pressable style={styles.btnPrimary} onPress={() => props.onSave({ baseUrl: baseUrl.trim(), token: token.trim() })}>
+              <Text style={styles.btnPrimaryText}>Save</Text>
             </Pressable>
           </View>
         </View>
@@ -295,87 +170,42 @@ function SettingsModal(props: {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
+  center: { alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
+    paddingTop: 54,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
-  headerTitle: { color: COLORS.text, fontSize: 24, fontWeight: '700' },
-  headerActions: { flexDirection: 'row', gap: 20, alignItems: 'center' },
-  headerAction: { color: COLORS.textDim, fontSize: 17 },
+  headerTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
+  gear: { color: COLORS.textDim, fontSize: 22 },
   body: { flex: 1 },
-  listContent: { padding: 16, gap: 8, flexGrow: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 32 },
-  emptyTitle: { fontSize: 44 },
-  emptyText: { color: COLORS.textDim, fontSize: 15, textAlign: 'center', lineHeight: 22 },
-  bubble: { maxWidth: '85%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10 },
-  bubbleUser: { alignSelf: 'flex-end', backgroundColor: COLORS.accent },
-  bubbleAssistant: { alignSelf: 'flex-start', backgroundColor: COLORS.surface },
-  bubbleText: { color: COLORS.text, fontSize: 15.5, lineHeight: 22 },
-  inputRow: {
+  tabBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 12,
-    gap: 8,
-    backgroundColor: COLORS.bg,
-  },
-  input: {
-    flex: 1,
     backgroundColor: COLORS.surface,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    color: COLORS.text,
-    fontSize: 15.5,
-    maxHeight: 130,
+    paddingTop: 8,
+    paddingBottom: 26,
+    borderTopWidth: 1,
+    borderTopColor: '#000',
   },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: { opacity: 0.4 },
-  sendButtonText: { color: '#fff', fontSize: 22, fontWeight: '700' },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    padding: 24,
-  },
+  tab: { flex: 1, alignItems: 'center', gap: 3 },
+  tabIcon: { fontSize: 20, opacity: 0.5 },
+  tabIconActive: { opacity: 1 },
+  tabLabel: { color: COLORS.textDim, fontSize: 11 },
+  tabLabelActive: { color: COLORS.accent, fontWeight: '700' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
   modalCard: { backgroundColor: COLORS.surfaceAlt, borderRadius: 18, padding: 20, gap: 8 },
   modalTitle: { color: COLORS.text, fontSize: 19, fontWeight: '700', marginBottom: 6 },
   fieldLabel: { color: COLORS.textDim, fontSize: 13, marginTop: 6 },
-  fieldInput: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: COLORS.text,
-    fontSize: 15,
-  },
+  fieldInput: { backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.text, fontSize: 15 },
   testResult: { fontSize: 13.5, marginTop: 8 },
-  testResultGood: { color: '#5dd97c' },
-  testResultBad: { color: COLORS.danger },
+  good: { color: COLORS.good },
+  bad: { color: COLORS.danger },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
-  modalButtonPrimary: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  modalButtonPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  modalButtonSecondary: {
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  modalButtonSecondaryText: { color: COLORS.textDim, fontSize: 15 },
+  btnPrimary: { backgroundColor: COLORS.accent, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10 },
+  btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  btnSecondary: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, minWidth: 64, alignItems: 'center' },
+  btnSecondaryText: { color: COLORS.textDim, fontSize: 15 },
 });

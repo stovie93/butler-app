@@ -73,6 +73,81 @@ export async function tryDispatchCommand(
   return typeof body?.text === 'string' ? body.text : '(no output)';
 }
 
+// ---- Structured dispatch API used by the GUI screens ----
+
+export type Job = {
+  id: string;
+  project: string;
+  task: string;
+  status: 'running' | 'done' | 'failed' | string;
+  started: string | null;
+  finished: string | null;
+};
+
+export type AwakeStatus = {
+  blockingSleep: boolean;
+  active: boolean;
+  holdUntil: string | null;
+  checkedAt: string | null;
+  runningJobs: number;
+};
+
+async function dispatchPost(
+  settings: Settings,
+  payload: Record<string, unknown>,
+): Promise<any> {
+  requireSettings(settings);
+  const res = await fetch(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+/** Dispatch a build to Claude Code. Returns the gateway's confirmation text. */
+export async function dispatchBuild(
+  settings: Settings,
+  project: string,
+  task: string,
+  continueSession: boolean,
+): Promise<string> {
+  const body = await dispatchPost(settings, {
+    action: 'build',
+    project,
+    task,
+    continue: continueSession,
+  });
+  return typeof body?.text === 'string' ? body.text : '(no output)';
+}
+
+export async function listJobs(settings: Settings, limit = 30): Promise<Job[]> {
+  const body = await dispatchPost(settings, { action: 'jobsData', limit });
+  return Array.isArray(body?.jobs) ? (body.jobs as Job[]) : [];
+}
+
+export async function getJobLog(settings: Settings, jobId: string): Promise<string> {
+  const body = await dispatchPost(settings, { action: 'jobLog', jobId });
+  return typeof body?.log === 'string' ? body.log : '(no log)';
+}
+
+export async function setAwake(
+  settings: Settings,
+  duration: string,
+): Promise<{ text: string; status?: AwakeStatus }> {
+  const body = await dispatchPost(settings, { action: 'awake', duration });
+  return { text: body?.text ?? '', status: body?.status };
+}
+
+export async function getStatus(settings: Settings): Promise<AwakeStatus> {
+  const body = await dispatchPost(settings, { action: 'status' });
+  return body?.status as AwakeStatus;
+}
+
 /** One-shot, non-streaming request. Used by the home-screen widget. */
 export async function chatOnce(settings: Settings, prompt: string): Promise<string> {
   requireSettings(settings);

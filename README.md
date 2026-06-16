@@ -1,8 +1,16 @@
 # Butler
 
-Android app + home-screen widget for talking to the local LLM running on the PC
-(OpenClaw gateway + Ollama). The phone connects over Tailscale, so it works from
-anywhere without exposing any ports.
+Android app + home-screen widget that remote-controls the AI on your PC over
+Tailscale. The local model handles chat; real coding work is dispatched to Claude
+Code, which builds autonomously while you're away. No ports exposed to the internet.
+
+## Screens (tabbed GUI)
+
+- **Chat** — talk to the local model (streaming replies). Slash commands work here too.
+- **Build** — dispatch a coding job (project + task, optional "continue last session"),
+  see live computer status, and keep the PC awake on demand (1h / 2h / 4h / Off).
+- **Jobs** — every dispatched build with status (running / done / failed); tap for its log.
+- **Help** — in-app setup + usage guide.
 
 ## How it works
 
@@ -10,17 +18,23 @@ anywhere without exposing any ports.
 Phone (Butler app / widget)
    │  HTTPS over Tailscale (private tailnet)
    ▼
-OpenClaw gateway  ·  /v1/chat/completions  (OpenAI-compatible, token auth)
+OpenClaw gateway
+   ├─ /v1/chat/completions      (chat, OpenAI-compatible, token auth)
+   └─ /api/v1/code-dispatch     (build/jobs/awake/status — code-dispatch plugin)
    │
-   ▼
-Ollama (gpt-oss:20b) on the PC
+   ├─ Ollama (local model) for chat
+   └─ Claude Code (Fable) for dispatched builds
 ```
 
-- The gateway keeps conversation context server-side, keyed by the `user` field
-  (`butler-phone`), so the app only ever sends the newest message.
-- The chat screen streams replies (SSE) via `expo/fetch`.
-- The widget's **⟳ Status** button fires a one-shot, non-streaming request from a
-  headless task and renders the answer in place; tapping anywhere else opens the app.
+- Chat context is held server-side, keyed by the `user` field (`butler-phone`).
+- Chat streams replies (SSE) via `expo/fetch`.
+- Build/Jobs/Awake call the `code-dispatch` gateway plugin's JSON HTTP route.
+- The widget's **⟳ Status** button fires a one-shot request from a headless task.
+
+## Icon
+
+`scripts/gen-icon.mjs` renders the full icon set from one SVG glyph (requires the
+`sharp` dev dependency): `node scripts/gen-icon.mjs`. Re-run `expo prebuild` after.
 
 ## First-run setup (in the app's settings sheet)
 
