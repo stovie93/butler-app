@@ -14,9 +14,52 @@ function requireSettings(settings: Settings): void {
   if (!settings.token) throw new Error('No gateway token configured. Open settings.');
 }
 
+// A sleeping/unreachable PC over Tailscale can leave a bare fetch hanging for
+// 30–60s before the OS gives up. Cap every call so the UI fails fast and clear.
+const DEFAULT_TIMEOUT_MS = 10000;
+
+async function fetchWithTimeout(
+  url: string,
+  options: Parameters<typeof fetch>[1],
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        `No response within ${Math.round(timeoutMs / 1000)}s — is the PC awake and reachable?`,
+      );
+    }
+    if (err instanceof TypeError) {
+      throw new Error('Could not reach the gateway — is the PC awake and on Tailscale?');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Lightweight reachability probe for the header status dot. Never throws. */
+export async function checkHealth(settings: Settings): Promise<boolean> {
+  if (!settings.baseUrl || !settings.token) return false;
+  try {
+    const res = await fetchWithTimeout(
+      `${normalizeBaseUrl(settings.baseUrl)}/v1/models`,
+      { headers: { Authorization: `Bearer ${settings.token}` } },
+      6000,
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function testConnection(settings: Settings): Promise<string> {
   requireSettings(settings);
-  const res = await fetch(`${normalizeBaseUrl(settings.baseUrl)}/v1/models`, {
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/v1/models`, {
     headers: { Authorization: `Bearer ${settings.token}` },
   });
   if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}`);
@@ -60,7 +103,7 @@ export async function tryDispatchCommand(
 
   if (!payload) return null;
   requireSettings(settings);
-  const res = await fetch(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch`, {
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -97,7 +140,7 @@ async function dispatchPost(
   payload: Record<string, unknown>,
 ): Promise<any> {
   requireSettings(settings);
-  const res = await fetch(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch`, {
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -151,7 +194,7 @@ export async function getStatus(settings: Settings): Promise<AwakeStatus> {
 /** One-shot, non-streaming request. Used by the home-screen widget. */
 export async function chatOnce(settings: Settings, prompt: string): Promise<string> {
   requireSettings(settings);
-  const res = await fetch(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -171,34 +214,86 @@ export async function chatOnce(settings: Settings, prompt: string): Promise<stri
   return content.trim();
 }
 
-/** Streaming request; yields reply text deltas as they arrive. */
+/**
+ * Streaming request; yields reply text deltas as they arrive.
+ * Pass `signal` to let the caller stop generation (the Stop button).
+ */
 export async function* streamChat(
   settings: Settings,
   prompt: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<string, void, void> {
   requireSettings(settings);
-  const res = await expoFetch(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.token}`,
-    },
-    body: JSON.stringify({
-      model: 'openclaw',
-      user: SESSION_USER,
-      stream: true,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}: ${await res.text()}`);
-  if (!res.body) throw new Error('Gateway response has no body');
+
+  // Internal controller drives the fetch; it's tripped by either the caller's
+  // stop signal or a connection timeout (cleared once headers arrive, so a
+  // long-running generation is never cut off mid-stream).
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onAbort);
+  }
+  let connectTimer: ReturnType<typeof setTimeout> | null = setTimeout(
+    () => controller.abort(),
+    12000,
+  );
+  const clearConnectTimer = () => {
+    if (connectTimer) {
+      clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+  };
+
+  let res: Awaited<ReturnType<typeof expoFetch>>;
+  try {
+    res = await expoFetch(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.token}`,
+      },
+      body: JSON.stringify({
+        model: 'openclaw',
+        user: SESSION_USER,
+        stream: true,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearConnectTimer();
+    if (signal) signal.removeEventListener('abort', onAbort);
+    if (signal?.aborted) return; // caller stopped before we connected
+    if (controller.signal.aborted) {
+      throw new Error('No response within 12s — is the PC awake and reachable?');
+    }
+    throw err;
+  }
+  clearConnectTimer();
+
+  if (!res.ok) {
+    if (signal) signal.removeEventListener('abort', onAbort);
+    throw new Error(`Gateway answered HTTP ${res.status}: ${await res.text()}`);
+  }
+  if (!res.body) {
+    if (signal) signal.removeEventListener('abort', onAbort);
+    throw new Error('Gateway response has no body');
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let done: boolean;
+      let value: Uint8Array | undefined;
+      try {
+        ({ done, value } = await reader.read());
+      } catch (err) {
+        if (controller.signal.aborted) return; // stopped by the user
+        throw err;
+      }
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let boundary;
@@ -221,5 +316,105 @@ export async function* streamChat(
     }
   } finally {
     reader.releaseLock();
+    if (signal) signal.removeEventListener('abort', onAbort);
   }
+}
+
+export type JobLogEnd = { status: string; result?: unknown; exitCode?: number | null };
+
+/**
+ * Open the live job-log stream (SSE) for a running job. `onSnapshot` fires with
+ * each full formatted log snapshot, `onEnd` once when the job reaches a terminal
+ * state, and `onError` if the stream can't be established (caller should fall
+ * back to polling). Returns a stop function.
+ */
+export function streamJobLog(
+  settings: Settings,
+  jobId: string,
+  handlers: {
+    onSnapshot: (log: string) => void;
+    onEnd: (info: JobLogEnd) => void;
+    onError: (err: Error) => void;
+  },
+): () => void {
+  const controller = new AbortController();
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+    controller.abort();
+  };
+
+  (async () => {
+    // Trip the fetch if headers never arrive; cleared once the stream connects
+    // so a long-running build is never cut off mid-stream.
+    let connectTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), 12000);
+    const clearConnectTimer = () => {
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+    };
+    try {
+      requireSettings(settings);
+      const url = `${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch/stream?jobId=${encodeURIComponent(jobId)}`;
+      const res = await expoFetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${settings.token}`, Accept: 'text/event-stream' },
+        signal: controller.signal,
+      });
+      clearConnectTimer();
+      if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}`);
+      if (!res.body) throw new Error('Stream has no body');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        let done: boolean;
+        let value: Uint8Array | undefined;
+        try {
+          ({ done, value } = await reader.read());
+        } catch (err) {
+          if (stopped) return; // caller closed the stream
+          throw err;
+        }
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary;
+        while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          let eventType = 'message';
+          const dataLines: string[] = [];
+          for (const line of block.split('\n')) {
+            if (line.startsWith(':')) continue; // keep-alive comment
+            if (line.startsWith('event:')) eventType = line.slice(6).trim();
+            else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+          }
+          if (!dataLines.length) continue;
+          let payload: any;
+          try {
+            payload = JSON.parse(dataLines.join('\n'));
+          } catch {
+            continue;
+          }
+          if (eventType === 'end') {
+            handlers.onEnd({
+              status: typeof payload?.status === 'string' ? payload.status : 'unknown',
+              result: payload?.result,
+              exitCode: payload?.exitCode ?? null,
+            });
+            return;
+          }
+          if (typeof payload?.log === 'string') handlers.onSnapshot(payload.log);
+        }
+      }
+    } catch (err) {
+      clearConnectTimer();
+      if (stopped) return;
+      handlers.onError(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return stop;
 }

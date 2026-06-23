@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { getJobLog, Job, listJobs } from '../api';
+import { getJobLog, Job, listJobs, streamJobLog } from '../api';
 import { Settings } from '../settings';
 import { COLORS, relativeTime, statusColor } from '../theme';
 
@@ -59,20 +59,46 @@ export function JobsScreen({ settings }: { settings: Settings }) {
     [settings],
   );
 
-  // While the open job is still running, poll its log + status every 3s for a live view.
+  // While the open job is running, stream its log live over SSE. If the stream
+  // can't be established, fall back to the original 3s log+status polling.
   useEffect(() => {
     if (!selected || liveStatus !== 'running') return;
-    const t = setInterval(async () => {
-      try {
-        const [l, js] = await Promise.all([getJobLog(settings, selected.id), listJobs(settings)]);
-        setLog(l);
-        setJobs(js);
-        const updated = js.find((j) => j.id === selected.id);
-        if (updated && updated.status !== 'running') setLiveStatus(updated.status);
-      } catch {}
-    }, 3000);
-    return () => clearInterval(t);
-  }, [selected, liveStatus, settings]);
+    const jobId = selected.id;
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (pollTimer || cancelled) return;
+      pollTimer = setInterval(async () => {
+        try {
+          const [l, js] = await Promise.all([getJobLog(settings, jobId), listJobs(settings)]);
+          if (cancelled) return;
+          setLog(l);
+          setJobs(js);
+          const updated = js.find((j) => j.id === jobId);
+          if (updated && updated.status !== 'running') setLiveStatus(updated.status);
+        } catch {}
+      }, 3000);
+    };
+
+    const stop = streamJobLog(settings, jobId, {
+      onSnapshot: (l) => {
+        if (!cancelled) setLog(l);
+      },
+      onEnd: ({ status }) => {
+        if (cancelled) return;
+        setLiveStatus(status);
+        refresh(); // pick up the finished job's timestamp/status in the list
+      },
+      onError: () => startPolling(),
+    });
+
+    return () => {
+      cancelled = true;
+      stop();
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [selected, liveStatus, settings, refresh]);
 
   return (
     <View style={styles.flex}>
