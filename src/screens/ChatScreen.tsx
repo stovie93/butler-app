@@ -27,7 +27,10 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const atBottomRef = useRef(true);
 
   useEffect(() => {
     loadHistory().then(setMessages);
@@ -42,43 +45,49 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     const prompt = input.trim();
     if (!prompt || busy) return;
     setInput('');
+    setError(null);
     setBusy(true);
+    atBottomRef.current = true; // a fresh send should always scroll into view
 
     const userMsg: ChatMessage = { id: nextId(), role: 'user', content: prompt };
     const botMsg: ChatMessage = { id: nextId(), role: 'assistant', content: '', pending: true };
     let next = [...messages, userMsg, botMsg];
     persist(next);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const command = await tryDispatchCommand(settings, prompt);
       if (command !== null) {
         next = next.map((m) => (m.id === botMsg.id ? { ...m, content: command, pending: false } : m));
         persist(next);
-        setBusy(false);
         return;
       }
       let reply = '';
-      for await (const delta of streamChat(settings, prompt)) {
+      for await (const delta of streamChat(settings, prompt, controller.signal)) {
         reply += delta;
         next = next.map((m) => (m.id === botMsg.id ? { ...m, content: reply } : m));
         setMessages(next);
       }
       next = next.map((m) =>
-        m.id === botMsg.id ? { ...m, content: reply.trim() || '(no reply)', pending: false } : m,
+        m.id === botMsg.id ? { ...m, content: reply.trim() || '(stopped)', pending: false } : m,
       );
       persist(next);
-      saveLastExchange(prompt, reply.trim()).catch(() => {});
+      if (reply.trim()) saveLastExchange(prompt, reply.trim()).catch(() => {});
     } catch (err) {
-      next = next.map((m) =>
-        m.id === botMsg.id
-          ? { ...m, content: `⚠ ${err instanceof Error ? err.message : String(err)}`, pending: false }
-          : m,
-      );
-      persist(next);
+      // The send failed (e.g. PC asleep). Drop the pending bubbles and hand the
+      // prompt back so it can be retried without retyping.
+      persist(messages);
+      setInput((cur) => (cur.trim() ? cur : prompt));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
   }, [input, busy, messages, settings, persist]);
+
+  const stop = useCallback(() => abortRef.current?.abort(), []);
 
   return (
     <KeyboardAvoidingView
@@ -90,7 +99,15 @@ export function ChatScreen({ settings }: { settings: Settings }) {
         data={messages}
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.list}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+        scrollEventThrottle={120}
+        onScroll={(e) => {
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          atBottomRef.current =
+            contentOffset.y + layoutMeasurement.height >= contentSize.height - 60;
+        }}
+        onContentSizeChange={() => {
+          if (atBottomRef.current) listRef.current?.scrollToEnd({ animated: true });
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>💬</Text>
@@ -110,6 +127,12 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           </View>
         )}
       />
+      {error && (
+        <Pressable style={styles.errorBanner} onPress={() => setError(null)}>
+          <Text style={styles.errorText}>⚠ {error}</Text>
+          <Text style={styles.errorDismiss}>tap to dismiss</Text>
+        </Pressable>
+      )}
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -121,11 +144,11 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           editable={!busy}
         />
         <Pressable
-          style={[styles.send, (busy || !input.trim()) && styles.sendOff]}
-          onPress={send}
-          disabled={busy || !input.trim()}
+          style={[styles.send, !busy && !input.trim() && styles.sendOff]}
+          onPress={busy ? stop : send}
+          disabled={!busy && !input.trim()}
         >
-          {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.sendText}>↑</Text>}
+          {busy ? <Text style={styles.stopGlyph}>■</Text> : <Text style={styles.sendText}>↑</Text>}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -157,4 +180,18 @@ const styles = StyleSheet.create({
   send: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
   sendOff: { opacity: 0.4 },
   sendText: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  stopGlyph: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 12,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: 'rgba(220,53,69,0.14)',
+  },
+  errorText: { color: COLORS.danger, fontSize: 13.5, flexShrink: 1, paddingRight: 10 },
+  errorDismiss: { color: COLORS.textDim, fontSize: 11.5 },
 });

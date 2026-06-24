@@ -418,3 +418,135 @@ export function streamJobLog(
 
   return stop;
 }
+
+// ---- Approvals: the butler asks, you decide ----
+
+export type Approval = {
+  id: string;
+  toolName: string;
+  title: string;
+  description: string;
+  severity: 'info' | 'warning' | 'critical' | string;
+  argsBrief: string;
+  status: 'pending' | 'allowed' | 'denied' | 'expired' | string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type ApprovalDecision = 'allow-once' | 'deny';
+
+async function approvalsPost(settings: Settings, payload: Record<string, unknown>): Promise<any> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/approvals`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function listApprovals(settings: Settings): Promise<Approval[]> {
+  const body = await approvalsPost(settings, { action: 'list' });
+  return Array.isArray(body?.approvals) ? (body.approvals as Approval[]) : [];
+}
+
+export async function decideApproval(
+  settings: Settings,
+  id: string,
+  decision: ApprovalDecision,
+): Promise<void> {
+  await approvalsPost(settings, { action: 'decide', id, decision });
+}
+
+/**
+ * Live approval stream (SSE). `onSnapshot` fires once with the current pending
+ * set, then `onPending`/`onResolved` fire as approvals arrive and get decided.
+ * `onError` fires if the stream can't connect (caller should fall back to polling).
+ * Returns a stop function.
+ */
+export function streamApprovals(
+  settings: Settings,
+  handlers: {
+    onSnapshot?: (approvals: Approval[]) => void;
+    onPending?: (approval: Approval) => void;
+    onResolved?: (approval: Approval) => void;
+    onError?: (err: Error) => void;
+  },
+): () => void {
+  const controller = new AbortController();
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+    controller.abort();
+  };
+
+  (async () => {
+    let connectTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), 12000);
+    const clearConnectTimer = () => {
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+        connectTimer = null;
+      }
+    };
+    try {
+      requireSettings(settings);
+      const url = `${normalizeBaseUrl(settings.baseUrl)}/api/v1/approvals/stream`;
+      const res = await expoFetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${settings.token}`, Accept: 'text/event-stream' },
+        signal: controller.signal,
+      });
+      clearConnectTimer();
+      if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}`);
+      if (!res.body) throw new Error('Stream has no body');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        let done: boolean;
+        let value: Uint8Array | undefined;
+        try {
+          ({ done, value } = await reader.read());
+        } catch (err) {
+          if (stopped) return;
+          throw err;
+        }
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary;
+        while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          let eventType = 'message';
+          const dataLines: string[] = [];
+          for (const line of block.split('\n')) {
+            if (line.startsWith(':')) continue;
+            if (line.startsWith('event:')) eventType = line.slice(6).trim();
+            else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+          }
+          if (!dataLines.length) continue;
+          let payload: any;
+          try {
+            payload = JSON.parse(dataLines.join('\n'));
+          } catch {
+            continue;
+          }
+          if (eventType === 'snapshot' && Array.isArray(payload?.approvals)) handlers.onSnapshot?.(payload.approvals);
+          else if (eventType === 'pending') handlers.onPending?.(payload);
+          else if (eventType === 'resolved') handlers.onResolved?.(payload);
+        }
+      }
+    } catch (err) {
+      clearConnectTimer();
+      if (stopped) return;
+      handlers.onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return stop;
+}
