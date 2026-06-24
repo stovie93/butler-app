@@ -2,7 +2,7 @@
   "expo": {
     "name": "Butler",
     "slug": "butler-app",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.stovie93.butler",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#0e1116",
         "foregroundImage": "./assets/android-icon-foreground.png",
