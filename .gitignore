@@ -23,6 +23,7 @@ expo-env.d.ts
 
 # debug
 build-release.log
+*.apk
 npm-debug.*
 yarn-debug.*
 yarn-error.*

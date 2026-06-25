@@ -46,11 +46,17 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P>When a build finishes, the butler also messages you automatically.</P>
       </Section>
 
+      <Section title="5 · PC tab">
+        <P>Quick remote-control for your computer. Tap to check <Text style={styles.b}>status</Text>, <Text style={styles.b}>disk</Text>, <Text style={styles.b}>battery</Text>, or top apps; <Text style={styles.b}>lock</Text> the screen; change <Text style={styles.b}>volume</Text>; or open an app like Spotify or your browser.</P>
+        <P>You can also just ask in Chat — “lock my PC”, “how much disk is free?”, “open spotify”.</P>
+      </Section>
+
       <Section title="Commands (chat shortcuts)">
         <P>Anything the tabs do, you can also type in Chat or send over WhatsApp:</P>
         <P><Mono>/build snake-game a retro snake game</Mono></P>
         <P><Mono>/build snake-game --continue add sound effects</Mono></P>
         <P><Mono>/jobs</Mono> · <Mono>/awake 2h</Mono> · <Mono>/awake off</Mono></P>
+        <P><Mono>/pc disk</Mono> · <Mono>/pc lock</Mono> · <Mono>/pc open spotify</Mono></P>
       </Section>
 
       <Section title="Good to know">

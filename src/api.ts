@@ -419,6 +419,35 @@ export function streamJobLog(
   return stop;
 }
 
+// ---- PC quick-actions: remote-control the computer ----
+
+/** Run a safe PC quick-action on the gateway machine. Returns the result text. */
+export async function pcAction(
+  settings: Settings,
+  action: string,
+  arg?: string,
+): Promise<string> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/pc`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.token}`,
+    },
+    body: JSON.stringify(arg ? { action, arg } : { action }),
+  });
+  if (!res.ok) {
+    let msg = `Gateway answered HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  const body = await res.json();
+  return typeof body?.text === 'string' ? body.text : '(no output)';
+}
+
 // ---- Approvals: the butler asks, you decide ----
 
 export type Approval = {
