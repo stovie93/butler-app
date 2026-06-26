@@ -177,7 +177,7 @@ export default function App() {
         {tab === 'chat' && <ChatScreen settings={settings} />}
         {tab === 'build' && <BuildScreen settings={settings} />}
         {tab === 'jobs' && <JobsScreen settings={settings} />}
-        {tab === 'pc' && <PcScreen settings={settings} />}
+        {tab === 'pc' && <PcScreen settings={settings} onNavigateToApprovals={() => setTab('approvals')} />}
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}
         {tab === 'help' && <HelpScreen onOpenSettings={() => setSettingsOpen(true)} />}
       </View>

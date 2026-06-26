@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,8 +12,9 @@ import { Settings } from '../settings';
 import { COLORS } from '../theme';
 
 type Btn = { label: string; action: string; arg?: string };
-// A power button optionally asks for confirmation before firing (shutdown/restart).
-type PowerBtn = Btn & { confirm?: { title: string; body: string; verb: string } };
+// Power buttons are `gated`: shutdown/restart need your approval (a card you
+// approve in the Approvals tab). Abort is immediate.
+type PowerBtn = Btn & { gated?: boolean };
 
 // Read-only checks — tapping shows the result in the output panel.
 const INFO: Btn[] = [
@@ -32,29 +32,17 @@ const CONTROL: Btn[] = [
   { label: '🔊 Vol +', action: 'volume', arg: 'up' },
 ];
 
-// Power actions. Shutdown/restart confirm first — once the PC is off the app
-// can't turn it back on. Abort cancels the 20s grace window.
+// Power actions. Shutdown/restart are gated: they create an approval you confirm
+// in the Approvals tab (once the PC is off, the app can't turn it back on). Abort
+// cancels the 20s grace window immediately.
 const POWER: PowerBtn[] = [
-  {
-    label: '⏻ Shut down',
-    action: 'shutdown',
-    confirm: {
-      title: 'Shut down PC?',
-      body: 'Powers off your computer in 20s. You cannot turn it back on remotely.',
-      verb: 'Shut down',
-    },
-  },
-  {
-    label: '🔁 Restart',
-    action: 'restart',
-    confirm: {
-      title: 'Restart PC?',
-      body: 'Reboots your computer in 20s. It may be briefly unreachable.',
-      verb: 'Restart',
-    },
-  },
+  { label: '⏻ Shut down', action: 'shutdown', gated: true },
+  { label: '🔁 Restart', action: 'restart', gated: true },
   { label: '✖ Abort', action: 'abort' },
 ];
+
+// Power requests block until you approve, so they need a long timeout.
+const POWER_TIMEOUT_MS = 130000;
 
 // Allow-listed apps to launch (must match the gateway's OPEN_TARGETS keys).
 const OPEN: Btn[] = [
@@ -67,7 +55,13 @@ const OPEN: Btn[] = [
   { label: 'Terminal', action: 'open', arg: 'terminal' },
 ];
 
-export function PcScreen({ settings }: { settings: Settings }) {
+export function PcScreen({
+  settings,
+  onNavigateToApprovals,
+}: {
+  settings: Settings;
+  onNavigateToApprovals?: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<string>('');
   const [isError, setIsError] = useState(false);
@@ -87,16 +81,18 @@ export function PcScreen({ settings }: { settings: Settings }) {
     }
   };
 
-  // Power buttons confirm before firing; abort runs immediately.
+  // Gated power actions (shutdown/restart) create an approval on the gateway and
+  // hold until you approve — so we fire the request and send you to the Approvals
+  // tab to confirm it. Abort runs immediately.
   const runPower = (btn: PowerBtn) => {
-    if (!btn.confirm) {
+    if (!btn.gated) {
       run(btn);
       return;
     }
-    Alert.alert(btn.confirm.title, btn.confirm.body, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: btn.confirm.verb, style: 'destructive', onPress: () => run(btn) },
-    ]);
+    pcAction(settings, btn.action, undefined, POWER_TIMEOUT_MS).catch(() => {});
+    setIsError(false);
+    setResult(`Requested ${btn.action} — approve it in the Approvals tab to continue.`);
+    onNavigateToApprovals?.();
   };
 
   const renderRow = (btns: Btn[]) => (
@@ -142,7 +138,7 @@ export function PcScreen({ settings }: { settings: Settings }) {
       <View style={styles.grid}>
         {POWER.map((b) => {
           const key = b.action;
-          const danger = !!b.confirm;
+          const danger = !!b.gated;
           return (
             <Pressable
               key={key}

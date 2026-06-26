@@ -421,21 +421,30 @@ export function streamJobLog(
 
 // ---- PC quick-actions: remote-control the computer ----
 
-/** Run a safe PC quick-action on the gateway machine. Returns the result text. */
+/**
+ * Run a PC quick-action on the gateway machine. Returns the result text.
+ * Power actions (shutdown/restart) are gated server-side: the request blocks
+ * until you approve in the Approvals tab, so pass a longer `timeoutMs` for those.
+ */
 export async function pcAction(
   settings: Settings,
   action: string,
   arg?: string,
+  timeoutMs?: number,
 ): Promise<string> {
   requireSettings(settings);
-  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/pc`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.token}`,
+  const res = await fetchWithTimeout(
+    `${normalizeBaseUrl(settings.baseUrl)}/api/v1/pc`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.token}`,
+      },
+      body: JSON.stringify(arg ? { action, arg } : { action }),
     },
-    body: JSON.stringify(arg ? { action, arg } : { action }),
-  });
+    timeoutMs,
+  );
   if (!res.ok) {
     let msg = `Gateway answered HTTP ${res.status}`;
     try {
