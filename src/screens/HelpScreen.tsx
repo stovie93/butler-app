@@ -49,6 +49,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
       <Section title="5 · PC tab">
         <P>Quick remote-control for your computer. Tap to check <Text style={styles.b}>status</Text>, <Text style={styles.b}>disk</Text>, <Text style={styles.b}>battery</Text>, or top apps; <Text style={styles.b}>lock</Text> the screen; change <Text style={styles.b}>volume</Text>; or open an app like Spotify or your browser.</P>
         <P>You can also just ask in Chat — “lock my PC”, “how much disk is free?”, “open spotify”.</P>
+        <P>The <Text style={styles.b}>Power</Text> section can shut down or restart the PC (with a 20s grace window and an Abort button). Asking the butler to shut down over chat needs your approval first — once it's off, the app can't turn it back on.</P>
       </Section>
 
       <Section title="Commands (chat shortcuts)">
@@ -57,6 +58,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P><Mono>/build snake-game --continue add sound effects</Mono></P>
         <P><Mono>/jobs</Mono> · <Mono>/awake 2h</Mono> · <Mono>/awake off</Mono></P>
         <P><Mono>/pc disk</Mono> · <Mono>/pc lock</Mono> · <Mono>/pc open spotify</Mono></P>
+        <P><Mono>/pc shutdown</Mono> · <Mono>/pc restart</Mono> · <Mono>/pc abort</Mono></P>
       </Section>
 
       <Section title="Good to know">
