@@ -500,6 +500,11 @@ export async function decideApproval(
   await approvalsPost(settings, { action: 'decide', id, decision });
 }
 
+/** Register this device's FCM push token so approvals reach the phone when closed. */
+export async function registerPushToken(settings: Settings, token: string): Promise<void> {
+  await approvalsPost(settings, { action: 'register-push', token, platform: 'android' });
+}
+
 /**
  * Live approval stream (SSE). `onSnapshot` fires once with the current pending
  * set, then `onPending`/`onResolved` fire as approvals arrive and get decided.

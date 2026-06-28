@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,6 +19,7 @@ import { PcScreen } from './src/screens/PcScreen';
 import { RemindersScreen } from './src/screens/RemindersScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { HelpScreen } from './src/screens/HelpScreen';
+import { registerForPush } from './src/push';
 import { loadSettings, saveSettings, Settings } from './src/settings';
 import { COLORS } from './src/theme';
 
@@ -149,6 +151,24 @@ export default function App() {
         setSettingsOpen(true);
       }
     });
+  }, []);
+
+  // Register this device for push once settings are valid (and whenever they
+  // change) so a pending approval can reach the phone with the app closed.
+  useEffect(() => {
+    if (!loaded || !settings.baseUrl || !settings.token) return;
+    registerForPush(settings);
+  }, [loaded, settings]);
+
+  // Open straight on the Approvals tab when the user taps an approval push —
+  // both on a cold start (app launched by the tap) and while running.
+  useEffect(() => {
+    const route = (resp: Notifications.NotificationResponse | null) => {
+      if (resp?.notification.request.content.data?.type === 'approval') setTab('approvals');
+    };
+    Notifications.getLastNotificationResponseAsync().then(route).catch(() => {});
+    const sub = Notifications.addNotificationResponseReceivedListener(route);
+    return () => sub.remove();
   }, []);
 
   if (!loaded) {

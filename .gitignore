@@ -35,6 +35,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase (push) — secrets, kept off git
+google-services.json
+
 # typescript
 *.tsbuildinfo
 

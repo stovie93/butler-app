@@ -2,7 +2,7 @@
   "expo": {
     "name": "Butler",
     "slug": "butler-app",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,7 +12,8 @@
     },
     "android": {
       "package": "com.stovie93.butler",
-      "versionCode": 6,
+      "versionCode": 7,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0e1116",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -25,6 +26,12 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#0e1116"
+        }
+      ],
       [
         "react-native-android-widget",
         {

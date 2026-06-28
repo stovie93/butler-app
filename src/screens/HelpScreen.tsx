@@ -69,6 +69,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
       </Section>
 
       <Section title="Good to know">
+        <P>When the butler needs your <Text style={styles.b}>approval</Text> for something sensitive (like shutting down the PC), it sends a push to your phone — you'll get it even with the app closed. Tap it to jump straight to the Approvals tab, then approve or deny.</P>
         <P>Your PC sleeps after 2 hours idle. Keep-awake stops it sleeping <Text style={styles.b}>while it's on</Text>, but the app can't wake a PC that's already asleep (hardware limit). If it's been a while, the PC may need a nudge in person before you can reach it.</P>
         <P>Everything stays on your own network — nothing is exposed to the public internet.</P>
       </Section>
