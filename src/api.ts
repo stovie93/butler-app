@@ -506,6 +506,59 @@ export async function decideApproval(
  * `onError` fires if the stream can't connect (caller should fall back to polling).
  * Returns a stop function.
  */
+// ---- Reminders: plain-language nudges that fire a toast / WhatsApp ----
+
+export type Reminder = {
+  id: string;
+  text: string;
+  when: string;
+  fireAt: number;
+  fireAtISO: string;
+  status: 'pending' | 'fired' | 'cancelled' | string;
+  createdAt: string;
+  relative?: string;
+};
+
+async function remindersPost(settings: Settings, payload: Record<string, unknown>): Promise<any> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/reminders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let msg = `Gateway answered HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function listReminders(settings: Settings): Promise<Reminder[]> {
+  const body = await remindersPost(settings, { action: 'list' });
+  return Array.isArray(body?.reminders) ? (body.reminders as Reminder[]) : [];
+}
+
+/** Create a reminder. `when` is plain language: "in 2 hours", "at 6pm", "tomorrow at 9am". */
+export async function addReminder(
+  settings: Settings,
+  text: string,
+  when: string,
+): Promise<Reminder> {
+  const body = await remindersPost(settings, { action: 'add', text, when });
+  return body?.reminder as Reminder;
+}
+
+export async function cancelReminder(settings: Settings, id: string): Promise<void> {
+  await remindersPost(settings, { action: 'cancel', id });
+}
+
 export function streamApprovals(
   settings: Settings,
   handlers: {

@@ -52,6 +52,12 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P>The <Text style={styles.b}>Power</Text> section can shut down or restart the PC. Because the app can't turn it back on once it's off, shutdown/restart always go through an approval — tapping one (or asking the butler in chat) creates a card in the <Text style={styles.b}>Approvals</Text> tab that you confirm, with a 20s grace window and an Abort button.</P>
       </Section>
 
+      <Section title="6 · Remind tab">
+        <P>Set a reminder in plain language. Type <Text style={styles.b}>what</Text> to remind you about and <Text style={styles.b}>when</Text> — like “in 2 hours”, “at 6pm”, or “tomorrow at 9am” — then tap Set reminder. The quick-pick chips fill common times.</P>
+        <P>When it's due, the butler fires a <Text style={styles.b}>notification on your PC</Text> and sends you a <Text style={styles.b}>WhatsApp</Text> message. Reminders survive a restart, and you can cancel any pending one with the ✕.</P>
+        <P>You can also just ask in Chat — “remind me to call mum in 2 hours”.</P>
+      </Section>
+
       <Section title="Commands (chat shortcuts)">
         <P>Anything the tabs do, you can also type in Chat or send over WhatsApp:</P>
         <P><Mono>/build snake-game a retro snake game</Mono></P>
@@ -59,6 +65,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P><Mono>/jobs</Mono> · <Mono>/awake 2h</Mono> · <Mono>/awake off</Mono></P>
         <P><Mono>/pc disk</Mono> · <Mono>/pc lock</Mono> · <Mono>/pc open spotify</Mono></P>
         <P><Mono>/pc shutdown</Mono> · <Mono>/pc restart</Mono> · <Mono>/pc abort</Mono></P>
+        <P><Mono>/remind in 2 hours | call mum</Mono> · <Mono>/remind list</Mono> · <Mono>/remind cancel &lt;id&gt;</Mono></P>
       </Section>
 
       <Section title="Good to know">
