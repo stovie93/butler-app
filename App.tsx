@@ -20,6 +20,8 @@ import { PcScreen } from './src/screens/PcScreen';
 import { MemoryHubScreen } from './src/screens/MemoryHubScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { HelpScreen } from './src/screens/HelpScreen';
+import { PersonaScreen } from './src/screens/PersonaScreen';
+import { ModelPickerScreen } from './src/screens/ModelPickerScreen';
 import { registerForPush } from './src/push';
 import { loadSettings, saveSettings, Settings } from './src/settings';
 import { COLORS } from './src/theme';
@@ -148,6 +150,8 @@ function AppInner() {
   const [tab, setTab] = useState<Tab>('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [personaOpen, setPersonaOpen] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
   const { health, refresh: refreshHealth } = useHealth(settings);
   const pendingApprovals = usePendingApprovals(settings);
 
@@ -234,6 +238,14 @@ function AppInner() {
           setSettingsOpen(false);
           setHelpOpen(true);
         }}
+        onOpenPersona={() => {
+          setSettingsOpen(false);
+          setPersonaOpen(true);
+        }}
+        onOpenModels={() => {
+          setSettingsOpen(false);
+          setModelsOpen(true);
+        }}
         onSave={(s) => {
           setSettings(s);
           saveSettings(s).catch(() => {});
@@ -260,6 +272,44 @@ function AppInner() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={personaOpen} animationType="slide" onRequestClose={() => setPersonaOpen(false)}>
+        <View style={[styles.root, { paddingTop: insets.top }]}>
+          <StatusBar style="light" />
+          <View style={styles.helpHeader}>
+            <Text style={styles.headerTitle}>Persona</Text>
+            <Pressable onPress={() => setPersonaOpen(false)} hitSlop={10}>
+              <Text style={styles.helpClose}>Done</Text>
+            </Pressable>
+          </View>
+          <View style={styles.body}>
+            <PersonaScreen settings={settings} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={modelsOpen} animationType="slide" onRequestClose={() => setModelsOpen(false)}>
+        <View style={[styles.root, { paddingTop: insets.top }]}>
+          <StatusBar style="light" />
+          <View style={styles.helpHeader}>
+            <Text style={styles.headerTitle}>Chat model</Text>
+            <Pressable onPress={() => setModelsOpen(false)} hitSlop={10}>
+              <Text style={styles.helpClose}>Done</Text>
+            </Pressable>
+          </View>
+          <View style={styles.body}>
+            <ModelPickerScreen
+              settings={settings}
+              onSelect={(model) => {
+                const next = { ...settings, model };
+                setSettings(next);
+                saveSettings(next).catch(() => {});
+                setModelsOpen(false);
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -269,6 +319,8 @@ function SettingsModal(props: {
   settings: Settings;
   onClose: () => void;
   onOpenHelp: () => void;
+  onOpenPersona: () => void;
+  onOpenModels: () => void;
   onSave: (s: Settings) => void;
 }) {
   const [baseUrl, setBaseUrl] = useState(props.settings.baseUrl);
@@ -336,9 +388,20 @@ function SettingsModal(props: {
               <Text style={styles.btnPrimaryText}>Save</Text>
             </Pressable>
           </View>
-          <Pressable style={styles.helpLink} onPress={props.onOpenHelp} hitSlop={8}>
-            <Text style={styles.helpLinkText}>How it works · setup guide →</Text>
-          </Pressable>
+          <View style={styles.linkRows}>
+            <Pressable style={styles.linkRow} onPress={props.onOpenPersona} hitSlop={6}>
+              <Text style={styles.linkRowText}>🎭  Persona</Text>
+              <Text style={styles.linkRowArrow}>›</Text>
+            </Pressable>
+            <Pressable style={styles.linkRow} onPress={props.onOpenModels} hitSlop={6}>
+              <Text style={styles.linkRowText}>🤖  Chat model</Text>
+              <Text style={styles.linkRowValue}>{props.settings.model || 'default'} ›</Text>
+            </Pressable>
+            <Pressable style={styles.linkRow} onPress={props.onOpenHelp} hitSlop={6}>
+              <Text style={styles.linkRowText}>❓  How it works</Text>
+              <Text style={styles.linkRowArrow}>›</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>
@@ -407,6 +470,14 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   btnSecondary: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, minWidth: 64, alignItems: 'center' },
   btnSecondaryText: { color: COLORS.textDim, fontSize: 15 },
-  helpLink: { marginTop: 14, alignItems: 'center' },
-  helpLinkText: { color: COLORS.accent, fontSize: 14, fontWeight: '600' },
+  linkRows: { marginTop: 16, borderTopWidth: 1, borderTopColor: COLORS.surface, paddingTop: 6 },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  linkRowText: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  linkRowValue: { color: COLORS.textDim, fontSize: 14 },
+  linkRowArrow: { color: COLORS.textDim, fontSize: 18 },
 });

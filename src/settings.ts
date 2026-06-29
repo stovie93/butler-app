@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type Settings = {
   baseUrl: string;
   token: string;
+  /** Chat model override (bare id, e.g. "gpt-oss:20b"). Empty = gateway default. */
+  model?: string;
 };
 
 export type ChatMessage = {

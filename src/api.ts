@@ -191,15 +191,22 @@ export async function getStatus(settings: Settings): Promise<AwakeStatus> {
   return body?.status as AwakeStatus;
 }
 
+/** Headers for a chat request, including the optional per-request model override. */
+function chatHeaders(settings: Settings): Record<string, string> {
+  const h: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${settings.token}`,
+  };
+  if (settings.model) h['x-openclaw-model'] = settings.model;
+  return h;
+}
+
 /** One-shot, non-streaming request. Used by the home-screen widget. */
 export async function chatOnce(settings: Settings, prompt: string): Promise<string> {
   requireSettings(settings);
   const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.token}`,
-    },
+    headers: chatHeaders(settings),
     body: JSON.stringify({
       model: 'openclaw',
       user: SESSION_USER,
@@ -249,10 +256,7 @@ export async function* streamChat(
   try {
     res = await expoFetch(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.token}`,
-      },
+      headers: chatHeaders(settings),
       body: JSON.stringify({
         model: 'openclaw',
         user: SESSION_USER,
@@ -562,6 +566,63 @@ export async function addReminder(
 
 export async function cancelReminder(settings: Settings, id: string): Promise<void> {
   await remindersPost(settings, { action: 'cancel', id });
+}
+
+// ---- Persona: the identity you set for your butler ----
+
+export type Persona = {
+  name: string;
+  creature: string;
+  vibe: string;
+  emoji: string;
+  personality: string;
+  signature: string;
+};
+
+export async function getPersona(settings: Settings): Promise<Persona> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/persona`, {
+    headers: { Authorization: `Bearer ${settings.token}` },
+  });
+  if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}`);
+  const body = await res.json();
+  return body?.persona as Persona;
+}
+
+export async function savePersona(settings: Settings, fields: Partial<Persona>): Promise<Persona> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/persona`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.token}` },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) {
+    let msg = `Gateway answered HTTP ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  const body = await res.json();
+  return body?.persona as Persona;
+}
+
+// ---- Chat models: pick the model per task ----
+
+export type ChatModel = { id: string; label: string; cloud: boolean };
+
+export async function getChatModels(settings: Settings): Promise<{ default: string; models: ChatModel[] }> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/chat-models`, {
+    headers: { Authorization: `Bearer ${settings.token}` },
+  });
+  if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}`);
+  const body = await res.json();
+  return {
+    default: typeof body?.default === 'string' ? body.default : '',
+    models: Array.isArray(body?.models) ? (body.models as ChatModel[]) : [],
+  };
 }
 
 // ---- Memory: a curated, durable memory of you ----
