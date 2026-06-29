@@ -8,6 +8,9 @@ import { Settings } from './settings';
 // permission / fetching the token so the high-importance heads-up display works
 // on the very first push. Must match the gateway's android.notification.channel_id.
 const APPROVALS_CHANNEL = 'approvals';
+// The channel a fired-reminder push lands on. Must match the gateway's
+// butler-reminders android.notification.channel_id.
+const REMINDERS_CHANNEL = 'reminders';
 
 /**
  * Register this device for push so a pending approval reaches the phone even
@@ -24,6 +27,11 @@ export async function registerForPush(settings: Settings): Promise<void> {
       await Notifications.setNotificationChannelAsync(APPROVALS_CHANNEL, {
         name: 'Approvals',
         importance: Notifications.AndroidImportance.MAX,
+        lightColor: '#4f8cff',
+      });
+      await Notifications.setNotificationChannelAsync(REMINDERS_CHANNEL, {
+        name: 'Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
         lightColor: '#4f8cff',
       });
     }

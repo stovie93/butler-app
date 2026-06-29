@@ -166,7 +166,9 @@ export default function App() {
   // both on a cold start (app launched by the tap) and while running.
   useEffect(() => {
     const route = (resp: Notifications.NotificationResponse | null) => {
-      if (resp?.notification.request.content.data?.type === 'approval') setTab('approvals');
+      const type = resp?.notification.request.content.data?.type;
+      if (type === 'approval') setTab('approvals');
+      else if (type === 'reminder') setTab('remind');
     };
     Notifications.getLastNotificationResponseAsync().then(route).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(route);

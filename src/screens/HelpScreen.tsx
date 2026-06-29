@@ -54,7 +54,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
 
       <Section title="6 · Remind tab">
         <P>Set a reminder in plain language. Type <Text style={styles.b}>what</Text> to remind you about and <Text style={styles.b}>when</Text> — like “in 2 hours”, “at 6pm”, or “tomorrow at 9am” — then tap Set reminder. The quick-pick chips fill common times.</P>
-        <P>When it's due, the butler fires a <Text style={styles.b}>notification on your PC</Text> and sends you a <Text style={styles.b}>WhatsApp</Text> message. Reminders survive a restart, and you can cancel any pending one with the ✕.</P>
+        <P>When it's due, the butler fires a <Text style={styles.b}>notification on your PC</Text> and a <Text style={styles.b}>push to your phone</Text> (even with the app closed — tap it to jump to this tab). Reminders survive a restart, and you can cancel any pending one with the ✕.</P>
         <P>You can also just ask in Chat — “remind me to call mum in 2 hours”.</P>
       </Section>
 
