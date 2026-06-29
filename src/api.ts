@@ -564,6 +564,64 @@ export async function cancelReminder(settings: Settings, id: string): Promise<vo
   await remindersPost(settings, { action: 'cancel', id });
 }
 
+// ---- Memory: a curated, durable memory of you ----
+
+export type Memory = {
+  id: string;
+  text: string;
+  tags: string[];
+  source: 'jordan' | 'butler' | string;
+  created: string;
+};
+
+export type MemorySearchResult = {
+  path: string;
+  score: number | null;
+  snippet: string;
+};
+
+async function memoryPost(settings: Settings, payload: Record<string, unknown>): Promise<any> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/memory`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let msg = `Gateway answered HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function listMemories(settings: Settings): Promise<Memory[]> {
+  const body = await memoryPost(settings, { action: 'list' });
+  return Array.isArray(body?.memories) ? (body.memories as Memory[]) : [];
+}
+
+/** Save a fact for the butler to remember. */
+export async function addMemory(settings: Settings, text: string, tags?: string[]): Promise<Memory> {
+  const body = await memoryPost(settings, { action: 'add', text, ...(tags?.length ? { tags } : {}) });
+  return body?.memory as Memory;
+}
+
+export async function deleteMemory(settings: Settings, id: string): Promise<void> {
+  await memoryPost(settings, { action: 'delete', id });
+}
+
+/** Semantic search across everything the butler remembers. */
+export async function searchMemories(settings: Settings, query: string): Promise<MemorySearchResult[]> {
+  const body = await memoryPost(settings, { action: 'search', query });
+  return Array.isArray(body?.results) ? (body.results as MemorySearchResult[]) : [];
+}
+
 export function streamApprovals(
   settings: Settings,
   handlers: {

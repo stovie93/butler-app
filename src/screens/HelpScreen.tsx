@@ -58,6 +58,12 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P>You can also just ask in Chat — “remind me to call mum in 2 hours”.</P>
       </Section>
 
+      <Section title="7 · Memory tab">
+        <P>The butler keeps a memory of who you are and what you care about. Type something to <Text style={styles.b}>remember</Text> — “I work nights”, “my dog is Rex”, a preference — and it's saved for good.</P>
+        <P>It also remembers things <Text style={styles.b}>on its own</Text> when you mention them in Chat. Everything it knows is listed here, and you can <Text style={styles.b}>search</Text> it or delete any entry with the ✕.</P>
+        <P>Remembered facts come back automatically in future chats, so the butler stays in context across conversations.</P>
+      </Section>
+
       <Section title="Commands (chat shortcuts)">
         <P>Anything the tabs do, you can also type in Chat or send over WhatsApp:</P>
         <P><Mono>/build snake-game a retro snake game</Mono></P>
@@ -66,6 +72,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P><Mono>/pc disk</Mono> · <Mono>/pc lock</Mono> · <Mono>/pc open spotify</Mono></P>
         <P><Mono>/pc shutdown</Mono> · <Mono>/pc restart</Mono> · <Mono>/pc abort</Mono></P>
         <P><Mono>/remind in 2 hours | call mum</Mono> · <Mono>/remind list</Mono> · <Mono>/remind cancel &lt;id&gt;</Mono></P>
+        <P><Mono>/remember I prefer concise replies</Mono> · <Mono>/recall &lt;query&gt;</Mono> · <Mono>/forget &lt;id&gt;</Mono></P>
       </Section>
 
       <Section title="Good to know">

@@ -17,19 +17,21 @@ import { BuildScreen } from './src/screens/BuildScreen';
 import { JobsScreen } from './src/screens/JobsScreen';
 import { PcScreen } from './src/screens/PcScreen';
 import { RemindersScreen } from './src/screens/RemindersScreen';
+import { MemoryScreen } from './src/screens/MemoryScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { HelpScreen } from './src/screens/HelpScreen';
 import { registerForPush } from './src/push';
 import { loadSettings, saveSettings, Settings } from './src/settings';
 import { COLORS } from './src/theme';
 
-type Tab = 'chat' | 'build' | 'jobs' | 'pc' | 'remind' | 'approvals' | 'help';
+type Tab = 'chat' | 'build' | 'jobs' | 'pc' | 'remind' | 'memory' | 'approvals' | 'help';
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'chat', label: 'Chat', icon: '💬' },
   { key: 'build', label: 'Build', icon: '🔨' },
   { key: 'jobs', label: 'Jobs', icon: '📋' },
   { key: 'pc', label: 'PC', icon: '🖥️' },
   { key: 'remind', label: 'Remind', icon: '⏰' },
+  { key: 'memory', label: 'Memory', icon: '🧠' },
   { key: 'approvals', label: 'Approvals', icon: '🛡️' },
   { key: 'help', label: 'Help', icon: '❓' },
 ];
@@ -201,6 +203,7 @@ export default function App() {
         {tab === 'jobs' && <JobsScreen settings={settings} />}
         {tab === 'pc' && <PcScreen settings={settings} onNavigateToApprovals={() => setTab('approvals')} />}
         {tab === 'remind' && <RemindersScreen settings={settings} />}
+        {tab === 'memory' && <MemoryScreen settings={settings} />}
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}
         {tab === 'help' && <HelpScreen onOpenSettings={() => setSettingsOpen(true)} />}
       </View>
