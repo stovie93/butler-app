@@ -6,34 +6,31 @@ import {
   AppState,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Approval, checkHealth, streamApprovals, listApprovals, testConnection } from './src/api';
 import { ChatScreen } from './src/screens/ChatScreen';
-import { BuildScreen } from './src/screens/BuildScreen';
-import { JobsScreen } from './src/screens/JobsScreen';
+import { BuildHubScreen } from './src/screens/BuildHubScreen';
 import { PcScreen } from './src/screens/PcScreen';
-import { RemindersScreen } from './src/screens/RemindersScreen';
-import { MemoryScreen } from './src/screens/MemoryScreen';
+import { MemoryHubScreen } from './src/screens/MemoryHubScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { HelpScreen } from './src/screens/HelpScreen';
 import { registerForPush } from './src/push';
 import { loadSettings, saveSettings, Settings } from './src/settings';
 import { COLORS } from './src/theme';
 
-type Tab = 'chat' | 'build' | 'jobs' | 'pc' | 'remind' | 'memory' | 'approvals' | 'help';
+type Tab = 'chat' | 'build' | 'pc' | 'memory' | 'approvals';
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'chat', label: 'Chat', icon: '💬' },
   { key: 'build', label: 'Build', icon: '🔨' },
-  { key: 'jobs', label: 'Jobs', icon: '📋' },
   { key: 'pc', label: 'PC', icon: '🖥️' },
-  { key: 'remind', label: 'Remind', icon: '⏰' },
   { key: 'memory', label: 'Memory', icon: '🧠' },
   { key: 'approvals', label: 'Approvals', icon: '🛡️' },
-  { key: 'help', label: 'Help', icon: '❓' },
 ];
 
 // Tracks the count of pending approvals app-wide so the Approvals tab can show a
@@ -137,10 +134,20 @@ function useHealth(settings: Settings) {
 }
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppInner />
+    </SafeAreaProvider>
+  );
+}
+
+function AppInner() {
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<Settings>({ baseUrl: '', token: '' });
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const { health, refresh: refreshHealth } = useHealth(settings);
   const pendingApprovals = usePendingApprovals(settings);
 
@@ -148,27 +155,23 @@ export default function App() {
     loadSettings().then((s) => {
       setSettings(s);
       setLoaded(true);
-      if (!s.baseUrl) {
-        setTab('help');
-        setSettingsOpen(true);
-      }
+      if (!s.baseUrl) setSettingsOpen(true);
     });
   }, []);
 
   // Register this device for push once settings are valid (and whenever they
-  // change) so a pending approval can reach the phone with the app closed.
+  // change) so approvals and reminders can reach the phone with the app closed.
   useEffect(() => {
     if (!loaded || !settings.baseUrl || !settings.token) return;
     registerForPush(settings);
   }, [loaded, settings]);
 
-  // Open straight on the Approvals tab when the user taps an approval push —
-  // both on a cold start (app launched by the tap) and while running.
+  // Open the right tab when a push is tapped — both on cold start and live.
   useEffect(() => {
     const route = (resp: Notifications.NotificationResponse | null) => {
       const type = resp?.notification.request.content.data?.type;
       if (type === 'approval') setTab('approvals');
-      else if (type === 'reminder') setTab('remind');
+      else if (type === 'reminder') setTab('memory');
     };
     Notifications.getLastNotificationResponseAsync().then(route).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(route);
@@ -187,7 +190,7 @@ export default function App() {
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>{TABS.find((t) => t.key === tab)?.label}</Text>
           <Pressable onPress={refreshHealth} hitSlop={12}>
@@ -201,16 +204,13 @@ export default function App() {
 
       <View style={styles.body}>
         {tab === 'chat' && <ChatScreen settings={settings} />}
-        {tab === 'build' && <BuildScreen settings={settings} />}
-        {tab === 'jobs' && <JobsScreen settings={settings} />}
+        {tab === 'build' && <BuildHubScreen settings={settings} />}
         {tab === 'pc' && <PcScreen settings={settings} onNavigateToApprovals={() => setTab('approvals')} />}
-        {tab === 'remind' && <RemindersScreen settings={settings} />}
-        {tab === 'memory' && <MemoryScreen settings={settings} />}
+        {tab === 'memory' && <MemoryHubScreen settings={settings} />}
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}
-        {tab === 'help' && <HelpScreen onOpenSettings={() => setSettingsOpen(true)} />}
       </View>
 
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { paddingBottom: insets.bottom + 10 }]}>
         {TABS.map((t) => (
           <Pressable key={t.key} style={styles.tab} onPress={() => setTab(t.key)}>
             <View>
@@ -230,12 +230,36 @@ export default function App() {
         visible={settingsOpen}
         settings={settings}
         onClose={() => setSettingsOpen(false)}
+        onOpenHelp={() => {
+          setSettingsOpen(false);
+          setHelpOpen(true);
+        }}
         onSave={(s) => {
           setSettings(s);
           saveSettings(s).catch(() => {});
           setSettingsOpen(false);
         }}
       />
+
+      <Modal visible={helpOpen} animationType="slide" onRequestClose={() => setHelpOpen(false)}>
+        <View style={[styles.root, { paddingTop: insets.top }]}>
+          <StatusBar style="light" />
+          <View style={styles.helpHeader}>
+            <Text style={styles.headerTitle}>Help</Text>
+            <Pressable onPress={() => setHelpOpen(false)} hitSlop={10}>
+              <Text style={styles.helpClose}>Done</Text>
+            </Pressable>
+          </View>
+          <View style={styles.body}>
+            <HelpScreen
+              onOpenSettings={() => {
+                setHelpOpen(false);
+                setSettingsOpen(true);
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -244,6 +268,7 @@ function SettingsModal(props: {
   visible: boolean;
   settings: Settings;
   onClose: () => void;
+  onOpenHelp: () => void;
   onSave: (s: Settings) => void;
 }) {
   const [baseUrl, setBaseUrl] = useState(props.settings.baseUrl);
@@ -311,6 +336,9 @@ function SettingsModal(props: {
               <Text style={styles.btnPrimaryText}>Save</Text>
             </Pressable>
           </View>
+          <Pressable style={styles.helpLink} onPress={props.onOpenHelp} hitSlop={8}>
+            <Text style={styles.helpLinkText}>How it works · setup guide →</Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -324,10 +352,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 54,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
+  helpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  helpClose: { color: COLORS.accent, fontSize: 16, fontWeight: '700' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
   dot: { width: 9, height: 9, borderRadius: 5 },
@@ -337,7 +373,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
     paddingTop: 8,
-    paddingBottom: 26,
     borderTopWidth: 1,
     borderTopColor: '#000',
   },
@@ -372,4 +407,6 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   btnSecondary: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, minWidth: 64, alignItems: 'center' },
   btnSecondaryText: { color: COLORS.textDim, fontSize: 15 },
+  helpLink: { marginTop: 14, alignItems: 'center' },
+  helpLinkText: { color: COLORS.accent, fontSize: 14, fontWeight: '600' },
 });
