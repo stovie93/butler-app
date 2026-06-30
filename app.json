@@ -2,7 +2,7 @@
   "expo": {
     "name": "Butler",
     "slug": "butler-app",
-    "version": "0.11.0",
+    "version": "0.12.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.stovie93.butler",
-      "versionCode": 11,
+      "versionCode": 12,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0e1116",
@@ -47,6 +47,12 @@
               "updatePeriodMillis": 1800000
             }
           ]
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Butler to use the microphone so you can talk to Clawdia."
         }
       ]
     ]
