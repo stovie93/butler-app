@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { setChatSession, streamChat, tryDispatchCommand } from '../api';
+import { dispatchBuild, setChatSession, streamChat, tryDispatchCommand } from '../api';
 import {
   ChatMessage,
   loadHistory,
@@ -27,6 +27,78 @@ import { speak, startListening, stopListening, stopSpeaking, useSpeechRecognitio
 let idCounter = 0;
 const nextId = () => `${Date.now()}-${++idCounter}`;
 
+// Clawdia ends a reply with a build marker when Jordan asks for something
+// buildable: [[BUILD: project=<kebab> | task=<one line>]]. We pull it out of the
+// visible text and turn it into a tap-to-build card (the optional "use Claude"
+// hand-off). See the code-dispatch before_prompt_build nudge on the gateway.
+const BUILD_MARKER = /\[\[BUILD:\s*project=([^|\]]+?)\s*\|\s*task=([\s\S]+?)\]\]/i;
+
+type Build = { project: string; task: string };
+
+function parseBuild(content: string): { text: string; build: Build | null } {
+  const m = content.match(BUILD_MARKER);
+  if (m) {
+    return { text: content.replace(BUILD_MARKER, '').trim(), build: { project: m[1].trim(), task: m[2].trim() } };
+  }
+  // Hide a half-streamed marker so the raw tokens never flash in the bubble.
+  const idx = content.indexOf('[[BUILD:');
+  if (idx !== -1) return { text: content.slice(0, idx).trim(), build: null };
+  return { text: content, build: null };
+}
+
+// The "hand this to Claude Code" affordance under a reply. Collapsed to a chip
+// by default; expanded (ready to tap) when the 🤖 Use-Claude toggle is on.
+function BuildCard({ settings, build, emphasized }: { settings: Settings; build: Build; emphasized: boolean }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [expanded, setExpanded] = useState(emphasized);
+  const [err, setErr] = useState('');
+
+  const go = useCallback(async () => {
+    setState('sending');
+    setErr('');
+    try {
+      await dispatchBuild(settings, build.project, build.task, false);
+      setState('sent');
+    } catch (e) {
+      setState('error');
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [settings, build]);
+
+  if (state === 'sent') {
+    return (
+      <View style={styles.buildSent}>
+        <Text style={styles.buildSentText}>🚀 Sent “{build.project}” to Claude Code — watch it in the Build tab.</Text>
+      </View>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <Pressable style={styles.buildChip} onPress={() => setExpanded(true)}>
+        <Text style={styles.buildChipText}>✨ Build “{build.project}” with Claude Code →</Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.buildCard}>
+      <Text style={styles.buildCardTitle}>🤖 Build with Claude Code</Text>
+      <Text style={styles.buildCardProject}>{build.project}</Text>
+      <Text style={styles.buildCardTask} numberOfLines={4}>{build.task}</Text>
+      {state === 'error' && <Text style={styles.buildErr}>⚠ {err}</Text>}
+      <View style={styles.buildActions}>
+        <Pressable style={styles.buildGhost} onPress={() => setExpanded(false)} disabled={state === 'sending'}>
+          <Text style={styles.buildGhostText}>Not now</Text>
+        </Pressable>
+        <Pressable style={styles.buildPrimary} onPress={go} disabled={state === 'sending'}>
+          {state === 'sending' ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.buildPrimaryText}>Build it</Text>}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function ChatScreen({ settings }: { settings: Settings }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -35,6 +107,9 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   const [listening, setListening] = useState(false);
   // When on, every reply is read aloud — not just replies to spoken input.
   const [autoSpeak, setAutoSpeak] = useState(false);
+  // When on, build suggestions come pre-expanded (lead with the Claude Code
+  // hand-off); off keeps them as a subtle chip (local-first, Claude optional).
+  const [useClaude, setUseClaude] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
   const atBottomRef = useRef(true);
@@ -136,8 +211,9 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       );
       persist(next);
       if (reply.trim()) {
-        saveLastExchange(prompt, reply.trim()).catch(() => {});
-        if (wasVoice || autoSpeak) speak(reply.trim()); // spoke to her, or 🔊 on
+        const spoken = parseBuild(reply.trim()).text; // never read the build marker aloud
+        saveLastExchange(prompt, spoken).catch(() => {});
+        if (spoken && (wasVoice || autoSpeak)) speak(spoken); // spoke to her, or 🔊 on
       }
     } catch (err) {
       // The send failed (e.g. PC asleep). Drop the pending bubbles and hand the
@@ -156,6 +232,12 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <View style={styles.toolbar}>
+        <Pressable onPress={() => setUseClaude((on) => !on)} hitSlop={8} style={styles.toolBtn}>
+          <Text style={styles.toolGlyph}>🤖</Text>
+          <Text style={[styles.toolLabel, useClaude && styles.toolLabelOn]}>
+            {useClaude ? 'Claude' : 'Local'}
+          </Text>
+        </Pressable>
         <Pressable
           onPress={() => {
             setAutoSpeak((on) => {
@@ -205,7 +287,31 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           </View>
         }
         renderItem={({ item }) => {
-          const bubble = (
+          if (item.role === 'assistant' && item.content) {
+            const { text, build } = parseBuild(item.content);
+            const bubble = (
+              <Pressable onPress={() => text && speak(text)}>
+                <View style={[styles.bubble, styles.bot]}>
+                  {item.pending && !text ? (
+                    <ActivityIndicator color={COLORS.textDim} size="small" />
+                  ) : (
+                    <Text style={styles.bubbleText}>{text}</Text>
+                  )}
+                </View>
+              </Pressable>
+            );
+            // Show the build card only once the reply (and its marker) is complete.
+            if (build && !item.pending) {
+              return (
+                <View style={styles.botGroup}>
+                  {bubble}
+                  <BuildCard settings={settings} build={build} emphasized={useClaude} />
+                </View>
+              );
+            }
+            return bubble;
+          }
+          return (
             <View style={[styles.bubble, item.role === 'user' ? styles.user : styles.bot]}>
               {item.pending && !item.content ? (
                 <ActivityIndicator color={COLORS.textDim} size="small" />
@@ -214,11 +320,6 @@ export function ChatScreen({ settings }: { settings: Settings }) {
               )}
             </View>
           );
-          // Tap one of Clawdia's replies to hear it read aloud.
-          if (item.role === 'assistant' && item.content) {
-            return <Pressable onPress={() => speak(item.content)}>{bubble}</Pressable>;
-          }
-          return bubble;
         }}
       />
       {error && (
@@ -271,6 +372,41 @@ const styles = StyleSheet.create({
   user: { alignSelf: 'flex-end', backgroundColor: COLORS.accent },
   bot: { alignSelf: 'flex-start', backgroundColor: COLORS.surface },
   bubbleText: { color: COLORS.text, fontSize: 15.5, lineHeight: 22 },
+  botGroup: { alignSelf: 'flex-start', maxWidth: '90%', gap: 6 },
+  buildChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(124,127,255,0.14)',
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+  buildChipText: { color: COLORS.accent, fontSize: 13.5, fontWeight: '700' },
+  buildCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(124,127,255,0.4)',
+    padding: 13,
+    gap: 5,
+  },
+  buildCardTitle: { color: COLORS.accent, fontSize: 12.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  buildCardProject: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
+  buildCardTask: { color: COLORS.textDim, fontSize: 13.5, lineHeight: 19 },
+  buildErr: { color: COLORS.danger, fontSize: 12.5 },
+  buildActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 6 },
+  buildGhost: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
+  buildGhostText: { color: COLORS.textDim, fontSize: 14, fontWeight: '600' },
+  buildPrimary: { backgroundColor: COLORS.accent, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 9, minWidth: 78, alignItems: 'center' },
+  buildPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  buildSent: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(80,200,120,0.14)',
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    maxWidth: '90%',
+  },
+  buildSentText: { color: COLORS.good, fontSize: 13.5, fontWeight: '600', lineHeight: 19 },
   toolbar: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
