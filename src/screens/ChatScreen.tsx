@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
@@ -10,10 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { streamChat, tryDispatchCommand } from '../api';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { setChatSession, streamChat, tryDispatchCommand } from '../api';
 import {
   ChatMessage,
   loadHistory,
+  loadSessionUser,
+  resetSessionUser,
   saveHistory,
   saveLastExchange,
   Settings,
@@ -41,6 +44,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
 
   useEffect(() => {
     loadHistory().then(setMessages);
+    loadSessionUser().then(setChatSession);
   }, []);
 
   // Live transcript → input while listening.
@@ -71,6 +75,25 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     setMessages(next);
     saveHistory(next).catch(() => {});
   }, []);
+
+  // Wipe the visible thread AND rotate the gateway session so Clawdia forgets the
+  // conversation context — a genuinely fresh start, not just a cleared screen.
+  const clearChat = useCallback(() => {
+    if (busy || messages.length === 0) return;
+    Alert.alert('Clear chat?', "This erases the conversation and Clawdia's memory of it.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          stopSpeaking();
+          setChatSession(await resetSessionUser());
+          persist([]);
+          setError(null);
+        },
+      },
+    ]);
+  }, [busy, messages.length, persist]);
 
   const send = useCallback(async () => {
     const prompt = input.trim();
@@ -131,10 +154,33 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <View style={styles.toolbar}>
+        <Pressable
+          onPress={() => {
+            setAutoSpeak((on) => {
+              if (on) stopSpeaking();
+              return !on;
+            });
+          }}
+          hitSlop={8}
+          style={styles.toolBtn}
+        >
+          <Text style={styles.toolGlyph}>{autoSpeak ? '🔊' : '🔇'}</Text>
+          <Text style={[styles.toolLabel, autoSpeak && styles.toolLabelOn]}>
+            {autoSpeak ? 'Voice on' : 'Voice off'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={clearChat}
+          hitSlop={8}
+          disabled={busy || messages.length === 0}
+          style={[styles.toolBtn, (busy || messages.length === 0) && styles.toolBtnOff]}
+        >
+          <Text style={styles.toolGlyph}>🗑️</Text>
+          <Text style={styles.toolLabel}>Clear</Text>
+        </Pressable>
+      </View>
       <FlatList
         ref={listRef}
         data={messages}
@@ -194,31 +240,21 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           multiline
           editable={!busy}
         />
-        <Pressable
-          style={[styles.mic, autoSpeak && styles.micActive]}
-          onPress={() => {
-            setAutoSpeak((on) => {
-              if (on) stopSpeaking();
-              return !on;
-            });
-          }}
-        >
-          <Text style={styles.micGlyph}>{autoSpeak ? '🔊' : '🔇'}</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.mic, listening && styles.micActive]}
-          onPress={toggleMic}
-          disabled={busy}
-        >
-          <Text style={[styles.micGlyph, busy && styles.micOff]}>🎤</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.send, !busy && !input.trim() && styles.sendOff]}
-          onPress={busy ? stop : send}
-          disabled={!busy && !input.trim()}
-        >
-          {busy ? <Text style={styles.stopGlyph}>■</Text> : <Text style={styles.sendText}>↑</Text>}
-        </Pressable>
+        {/* One round button next to a full-width input: stop while generating,
+            send when there's text, otherwise the mic to talk. */}
+        {busy ? (
+          <Pressable style={styles.action} onPress={stop}>
+            <Text style={styles.stopGlyph}>■</Text>
+          </Pressable>
+        ) : input.trim() ? (
+          <Pressable style={styles.action} onPress={send}>
+            <Text style={styles.sendText}>↑</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={[styles.action, listening ? styles.micActive : styles.micIdle]} onPress={toggleMic}>
+            <Text style={styles.micGlyph}>🎤</Text>
+          </Pressable>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -235,6 +271,19 @@ const styles = StyleSheet.create({
   user: { alignSelf: 'flex-end', backgroundColor: COLORS.accent },
   bot: { alignSelf: 'flex-start', backgroundColor: COLORS.surface },
   bubbleText: { color: COLORS.text, fontSize: 15.5, lineHeight: 22 },
+  toolbar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 18,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
+  toolBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  toolBtnOff: { opacity: 0.35 },
+  toolGlyph: { fontSize: 15 },
+  toolLabel: { color: COLORS.textDim, fontSize: 12.5, fontWeight: '600' },
+  toolLabelOn: { color: COLORS.accent },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, gap: 8, backgroundColor: COLORS.bg },
   input: {
     flex: 1,
@@ -246,12 +295,10 @@ const styles = StyleSheet.create({
     fontSize: 15.5,
     maxHeight: 130,
   },
-  mic: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' },
+  action: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
+  micIdle: { backgroundColor: COLORS.surface },
   micActive: { backgroundColor: 'rgba(255,107,107,0.22)' },
   micGlyph: { fontSize: 19 },
-  micOff: { opacity: 0.35 },
-  send: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
-  sendOff: { opacity: 0.4 },
   sendText: { color: '#fff', fontSize: 22, fontWeight: '700' },
   stopGlyph: { color: '#fff', fontSize: 16, fontWeight: '700' },
   errorBanner: {

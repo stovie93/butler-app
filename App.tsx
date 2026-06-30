@@ -4,15 +4,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Approval, checkHealth, streamApprovals, listApprovals, testConnection } from './src/api';
 import { ChatScreen } from './src/screens/ChatScreen';
@@ -140,7 +139,9 @@ function useHealth(settings: Settings) {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppInner />
+      <KeyboardProvider>
+        <AppInner />
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }
@@ -155,19 +156,6 @@ function AppInner() {
   const [personaOpen, setPersonaOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [kbHeight, setKbHeight] = useState(0);
-
-  // Android edge-to-edge doesn't auto-resize for the keyboard, so the input row
-  // ends up behind it. Track the keyboard height and lift the layout above it
-  // (hiding the tab bar while typing) so the input is always visible.
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKbHeight(e.endCoordinates?.height ?? 0));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
   const { health, refresh: refreshHealth } = useHealth(settings);
   const pendingApprovals = usePendingApprovals(settings);
 
@@ -208,7 +196,7 @@ function AppInner() {
   }
 
   return (
-    <View style={[styles.root, { paddingBottom: kbHeight }]}>
+    <View style={styles.root}>
       <StatusBar style="light" />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerLeft}>
@@ -235,7 +223,6 @@ function AppInner() {
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}
       </View>
 
-      {kbHeight === 0 && (
       <View style={[styles.tabBar, { paddingBottom: insets.bottom + 10 }]}>
         {TABS.map((t) => (
           <Pressable key={t.key} style={styles.tab} onPress={() => setTab(t.key)}>
@@ -251,7 +238,6 @@ function AppInner() {
           </Pressable>
         ))}
       </View>
-      )}
 
       <SettingsModal
         visible={settingsOpen}

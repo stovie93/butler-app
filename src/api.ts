@@ -2,8 +2,14 @@ import { fetch as expoFetch } from 'expo/fetch';
 import type { Settings } from './settings';
 
 // The OpenClaw gateway holds conversation context server-side, keyed by the
-// `user` field — so each request only needs the newest user message.
-const SESSION_USER = 'butler-phone';
+// `user` field — so each request only needs the newest user message. The active
+// id can be rotated (see setChatSession) to start a fresh conversation.
+let activeSessionUser = 'butler-phone';
+
+/** Point chat at a (possibly rotated) gateway session id. */
+export function setChatSession(user: string): void {
+  activeSessionUser = user || 'butler-phone';
+}
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
@@ -209,7 +215,7 @@ export async function chatOnce(settings: Settings, prompt: string): Promise<stri
     headers: chatHeaders(settings),
     body: JSON.stringify({
       model: 'openclaw',
-      user: SESSION_USER,
+      user: activeSessionUser,
       stream: false,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -259,7 +265,7 @@ export async function* streamChat(
       headers: chatHeaders(settings),
       body: JSON.stringify({
         model: 'openclaw',
-        user: SESSION_USER,
+        user: activeSessionUser,
         stream: true,
         messages: [{ role: 'user', content: prompt }],
       }),

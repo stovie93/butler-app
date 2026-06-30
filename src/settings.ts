@@ -23,6 +23,26 @@ export type LastExchange = {
 const SETTINGS_KEY = 'butler.settings';
 const HISTORY_KEY = 'butler.history';
 const LAST_EXCHANGE_KEY = 'butler.lastExchange';
+const SESSION_KEY = 'butler.session';
+
+// The gateway keys conversation context by the `user` field. Clearing the chat
+// rotates this id so the server starts a brand-new session (context "goes away")
+// — the old session is left idle for the gateway to reap.
+export async function loadSessionUser(): Promise<string> {
+  try {
+    const raw = await AsyncStorage.getItem(SESSION_KEY);
+    if (raw) return raw;
+  } catch {}
+  return 'butler-phone';
+}
+
+export async function resetSessionUser(): Promise<string> {
+  const user = `butler-phone-${Date.now().toString(36)}`;
+  try {
+    await AsyncStorage.setItem(SESSION_KEY, user);
+  } catch {}
+  return user;
+}
 
 export async function loadSettings(): Promise<Settings> {
   try {
