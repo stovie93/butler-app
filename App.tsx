@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -22,6 +23,7 @@ import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { HelpScreen } from './src/screens/HelpScreen';
 import { PersonaScreen } from './src/screens/PersonaScreen';
 import { ModelPickerScreen } from './src/screens/ModelPickerScreen';
+import { NotificationsScreen } from './src/screens/NotificationsScreen';
 import { registerForPush } from './src/push';
 import { loadSettings, saveSettings, Settings } from './src/settings';
 import { COLORS } from './src/theme';
@@ -152,6 +154,20 @@ function AppInner() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [personaOpen, setPersonaOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
+
+  // Android edge-to-edge doesn't auto-resize for the keyboard, so the input row
+  // ends up behind it. Track the keyboard height and lift the layout above it
+  // (hiding the tab bar while typing) so the input is always visible.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const { health, refresh: refreshHealth } = useHealth(settings);
   const pendingApprovals = usePendingApprovals(settings);
 
@@ -192,7 +208,7 @@ function AppInner() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingBottom: kbHeight }]}>
       <StatusBar style="light" />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerLeft}>
@@ -201,9 +217,14 @@ function AppInner() {
             <View style={[styles.dot, { backgroundColor: HEALTH_COLOR[health] }]} />
           </Pressable>
         </View>
-        <Pressable onPress={() => setSettingsOpen(true)} hitSlop={10}>
-          <Text style={styles.gear}>⚙</Text>
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable onPress={() => setNotifOpen(true)} hitSlop={10}>
+            <Text style={styles.headerIcon}>🔔</Text>
+          </Pressable>
+          <Pressable onPress={() => setSettingsOpen(true)} hitSlop={10}>
+            <Text style={styles.gear}>⚙</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.body}>
@@ -214,6 +235,7 @@ function AppInner() {
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}
       </View>
 
+      {kbHeight === 0 && (
       <View style={[styles.tabBar, { paddingBottom: insets.bottom + 10 }]}>
         {TABS.map((t) => (
           <Pressable key={t.key} style={styles.tab} onPress={() => setTab(t.key)}>
@@ -229,6 +251,7 @@ function AppInner() {
           </Pressable>
         ))}
       </View>
+      )}
 
       <SettingsModal
         visible={settingsOpen}
@@ -307,6 +330,21 @@ function AppInner() {
                 setModelsOpen(false);
               }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={notifOpen} animationType="slide" onRequestClose={() => setNotifOpen(false)}>
+        <View style={[styles.root, { paddingTop: insets.top }]}>
+          <StatusBar style="light" />
+          <View style={styles.helpHeader}>
+            <Text style={styles.headerTitle}>Notifications</Text>
+            <Pressable onPress={() => setNotifOpen(false)} hitSlop={10}>
+              <Text style={styles.helpClose}>Done</Text>
+            </Pressable>
+          </View>
+          <View style={styles.body}>
+            <NotificationsScreen settings={settings} />
           </View>
         </View>
       </Modal>
@@ -428,8 +466,10 @@ const styles = StyleSheet.create({
   },
   helpClose: { color: COLORS.accent, fontSize: 16, fontWeight: '700' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   headerTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
   dot: { width: 9, height: 9, borderRadius: 5 },
+  headerIcon: { fontSize: 19 },
   gear: { color: COLORS.textDim, fontSize: 22 },
   body: { flex: 1 },
   tabBar: {

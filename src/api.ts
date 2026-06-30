@@ -568,6 +568,20 @@ export async function cancelReminder(settings: Settings, id: string): Promise<vo
   await remindersPost(settings, { action: 'cancel', id });
 }
 
+// ---- Notification history ----
+
+export type Notification = { ts: string; type: string; title: string; body: string };
+
+export async function getNotifications(settings: Settings): Promise<Notification[]> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/notifications`, {
+    headers: { Authorization: `Bearer ${settings.token}` },
+  });
+  if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}`);
+  const body = await res.json();
+  return Array.isArray(body?.notifications) ? (body.notifications as Notification[]) : [];
+}
+
 // ---- Persona: the identity you set for your butler ----
 
 export type Persona = {

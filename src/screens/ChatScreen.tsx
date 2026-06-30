@@ -30,6 +30,8 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  // When on, every reply is read aloud — not just replies to spoken input.
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
   const atBottomRef = useRef(true);
@@ -112,7 +114,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       persist(next);
       if (reply.trim()) {
         saveLastExchange(prompt, reply.trim()).catch(() => {});
-        if (wasVoice) speak(reply.trim()); // talked to her → she talks back
+        if (wasVoice || autoSpeak) speak(reply.trim()); // spoke to her, or 🔊 on
       }
     } catch (err) {
       // The send failed (e.g. PC asleep). Drop the pending bubbles and hand the
@@ -124,7 +126,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       abortRef.current = null;
       setBusy(false);
     }
-  }, [input, busy, listening, messages, settings, persist]);
+  }, [input, busy, listening, autoSpeak, messages, settings, persist]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
@@ -192,6 +194,17 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           multiline
           editable={!busy}
         />
+        <Pressable
+          style={[styles.mic, autoSpeak && styles.micActive]}
+          onPress={() => {
+            setAutoSpeak((on) => {
+              if (on) stopSpeaking();
+              return !on;
+            });
+          }}
+        >
+          <Text style={styles.micGlyph}>{autoSpeak ? '🔊' : '🔇'}</Text>
+        </Pressable>
         <Pressable
           style={[styles.mic, listening && styles.micActive]}
           onPress={toggleMic}
