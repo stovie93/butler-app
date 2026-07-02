@@ -419,6 +419,10 @@ export function streamJobLog(
           if (typeof payload?.log === 'string') handlers.onSnapshot(payload.log);
         }
       }
+      // The server closed the stream without an 'end' event (e.g. gateway
+      // restart). Surface it so the caller falls back to polling instead of
+      // silently freezing.
+      throw new Error('Log stream closed');
     } catch (err) {
       clearConnectTimer();
       if (stopped) return;
@@ -776,6 +780,9 @@ export function streamApprovals(
           else if (eventType === 'resolved') handlers.onResolved?.(payload);
         }
       }
+      // Clean close without the caller stopping us (e.g. gateway restart) —
+      // fall through to onError so the polling fallback takes over.
+      throw new Error('Approval stream closed');
     } catch (err) {
       clearConnectTimer();
       if (stopped) return;

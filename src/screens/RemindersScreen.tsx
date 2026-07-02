@@ -126,7 +126,8 @@ export function RemindersScreen({ settings }: { settings: Settings }) {
       </Text>
       {reminders.length === 0 && !loading ? (
         <Text style={styles.empty}>
-          No pending reminders. They fire a PC notification and a WhatsApp message when due.
+          No pending reminders. When one is due it pushes to this phone (even with the app closed)
+          and pops a notification on your PC.
         </Text>
       ) : (
         reminders.map((r) => (

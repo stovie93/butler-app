@@ -16,9 +16,11 @@ import {
   ChatMessage,
   loadHistory,
   loadSessionUser,
+  loadUseClaude,
   resetSessionUser,
   saveHistory,
   saveLastExchange,
+  saveUseClaude,
   Settings,
 } from '../settings';
 import { COLORS } from '../theme';
@@ -34,6 +36,16 @@ const nextId = () => `${Date.now()}-${++idCounter}`;
 const BUILD_MARKER = /\[\[BUILD:\s*project=([^|\]]+?)\s*\|\s*task=([\s\S]+?)\]\]/i;
 
 type Build = { project: string; task: string };
+
+// Tap-to-send starters on an empty chat — one per real capability (live web
+// search, reminders, memory recall, PC control) so a fresh conversation shows
+// what Clawdia can actually do.
+const STARTERS = [
+  "What's the latest news?",
+  'Remind me to stretch in 30 minutes',
+  'What do you know about me?',
+  "How's my PC doing?",
+];
 
 function parseBuild(content: string): { text: string; build: Build | null } {
   const m = content.match(BUILD_MARKER);
@@ -127,6 +139,14 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   useEffect(() => {
     loadHistory().then(setMessages);
     loadSessionUser().then(setChatSession);
+    loadUseClaude().then(setUseClaude);
+  }, []);
+
+  const toggleUseClaude = useCallback(() => {
+    setUseClaude((on) => {
+      saveUseClaude(!on).catch(() => {});
+      return !on;
+    });
   }, []);
 
   // Live transcript → input while listening.
@@ -177,8 +197,8 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     ]);
   }, [busy, messages.length, persist]);
 
-  const send = useCallback(async () => {
-    const prompt = input.trim();
+  const send = useCallback(async (textOverride?: string) => {
+    const prompt = (textOverride ?? input).trim();
     if (!prompt || busy) return;
     const wasVoice = voiceRef.current; // speak the reply only if you spoke to it
     voiceRef.current = false;
@@ -201,6 +221,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    let reply = '';
 
     try {
       const command = await tryDispatchCommand(settings, prompt);
@@ -209,7 +230,6 @@ export function ChatScreen({ settings }: { settings: Settings }) {
         persist(next);
         return;
       }
-      let reply = '';
       for await (const delta of streamChat(settings, prompt, controller.signal)) {
         reply += delta;
         next = next.map((m) => (m.id === botMsg.id ? { ...m, content: reply } : m));
@@ -225,10 +245,19 @@ export function ChatScreen({ settings }: { settings: Settings }) {
         if (spoken && (wasVoice || autoSpeak)) speak(spoken); // spoke to her, or 🔊 on
       }
     } catch (err) {
-      // The send failed (e.g. PC asleep). Drop the pending bubbles and hand the
-      // prompt back so it can be retried without retyping.
-      persist(messages);
-      setInput((cur) => (cur.trim() ? cur : prompt));
+      if (reply.trim()) {
+        // The stream dropped mid-reply. Keep what already arrived — losing
+        // half an answer is worse than a banner explaining the cutoff.
+        next = next.map((m) =>
+          m.id === botMsg.id ? { ...m, content: reply.trim(), pending: false } : m,
+        );
+        persist(next);
+      } else {
+        // The send failed outright (e.g. PC asleep). Drop the pending bubbles
+        // and hand the prompt back so it can be retried without retyping.
+        persist(messages);
+        setInput((cur) => (cur.trim() ? cur : prompt));
+      }
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       abortRef.current = null;
@@ -241,7 +270,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   return (
     <View style={[styles.flex, keyboardPad > 0 && { paddingBottom: keyboardPad }]}>
       <View style={styles.toolbar}>
-        <Pressable onPress={() => setUseClaude((on) => !on)} hitSlop={8} style={styles.toolBtn}>
+        <Pressable onPress={toggleUseClaude} hitSlop={8} style={styles.toolBtn}>
           <Text style={styles.toolGlyph}>🤖</Text>
           <Text style={[styles.toolLabel, useClaude && styles.toolLabelOn]}>
             {useClaude ? 'Claude' : 'Local'}
@@ -287,8 +316,18 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>💬</Text>
             <Text style={styles.emptyText}>
-              Chat with the local model on your PC. Tip: type a command like{'\n'}
-              <Text style={styles.mono}>/build myapp a snake game</Text> to put Claude to work.
+              Chat with the AI on your PC — or tap one to try:
+            </Text>
+            <View style={styles.starters}>
+              {STARTERS.map((s) => (
+                <Pressable key={s} style={styles.starter} onPress={() => send(s)}>
+                  <Text style={styles.starterText}>{s}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.emptyHint}>
+              Tip: <Text style={styles.mono}>/build myapp a snake game</Text> puts Claude Code to
+              work.
             </Text>
           </View>
         }
@@ -354,7 +393,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
             <Text style={styles.stopGlyph}>■</Text>
           </Pressable>
         ) : input.trim() ? (
-          <Pressable style={styles.action} onPress={send}>
+          <Pressable style={styles.action} onPress={() => send()}>
             <Text style={styles.sendText}>↑</Text>
           </Pressable>
         ) : (
@@ -373,6 +412,17 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 32 },
   emptyEmoji: { fontSize: 44 },
   emptyText: { color: COLORS.textDim, fontSize: 15, textAlign: 'center', lineHeight: 23 },
+  starters: { gap: 8, alignSelf: 'stretch' },
+  starter: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(79,140,255,0.35)',
+  },
+  starterText: { color: COLORS.text, fontSize: 14.5, textAlign: 'center' },
+  emptyHint: { color: COLORS.textDim, fontSize: 13, textAlign: 'center', lineHeight: 20 },
   mono: { color: COLORS.accent, fontFamily: Platform.OS === 'android' ? 'monospace' : 'Courier' },
   bubble: { maxWidth: '86%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10 },
   user: { alignSelf: 'flex-end', backgroundColor: COLORS.accent },

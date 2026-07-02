@@ -32,40 +32,38 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
       </Section>
 
       <Section title="2 · Chat tab">
-        <P>Talk to the local model on your PC — quick questions, notes, anything. It remembers the conversation.</P>
+        <P>Talk to your butler — it lives on your PC, knows the time, what's running, and what it remembers about you. Ask for <Text style={styles.b}>the latest news, weather, or prices</Text> and it looks them up on the live web.</P>
+        <P>Tap <Text style={styles.b}>🎤 to talk</Text> instead of typing — when you speak to it, it speaks back. Tap any reply bubble to hear it aloud, or turn <Text style={styles.b}>🔊 Voice on</Text> to hear every reply. <Text style={styles.b}>🗑️ Clear</Text> wipes the conversation and starts genuinely fresh.</P>
+        <P>The <Text style={styles.b}>🤖 Local/Claude</Text> toggle sets how build suggestions appear: on “Claude”, offers to hand work to Claude Code come pre-expanded; on “Local” they stay as a subtle chip.</P>
       </Section>
 
       <Section title="3 · Build tab">
-        <P>Give Claude Code a real coding job. Enter a <Text style={styles.b}>project name</Text> (a folder under your PC's repos) and describe what to build, then tap Dispatch. It runs on your PC and you get a job id back instantly.</P>
+        <P>Give Claude Code a real coding job. Enter a <Text style={styles.b}>project name</Text> (a folder under your PC's repos) and describe what to build, then tap Dispatch. Switch to <Text style={styles.b}>Jobs</Text> to watch it run — <Text style={{ color: COLORS.warn }}>running</Text>, <Text style={{ color: COLORS.good }}>done</Text>, or <Text style={{ color: COLORS.danger }}>failed</Text> — and tap a job for its live log. Your phone gets a push when a build finishes.</P>
         <P>Turn on <Text style={styles.b}>Continue</Text> to have it pick up where the last session on that project left off.</P>
-        <P>The <Text style={styles.b}>Keep awake</Text> buttons stop your PC from sleeping for 1–4 hours while you work (tap Off to release). Builds already keep it awake on their own.</P>
+        <P>The <Text style={styles.b}>Keep awake</Text> buttons stop your PC from sleeping for 1–4 hours (tap Off to release). Builds already keep it awake on their own.</P>
       </Section>
 
-      <Section title="4 · Jobs tab">
-        <P>Every build shows up here with its status — <Text style={{ color: COLORS.warn }}>running</Text>, <Text style={{ color: COLORS.good }}>done</Text>, or <Text style={{ color: COLORS.danger }}>failed</Text>. Tap one to read its log. Pull down to refresh.</P>
-        <P>When a build finishes, the butler also messages you automatically.</P>
-      </Section>
-
-      <Section title="5 · PC tab">
+      <Section title="4 · PC tab">
         <P>Quick remote-control for your computer. Tap to check <Text style={styles.b}>status</Text>, <Text style={styles.b}>disk</Text>, <Text style={styles.b}>battery</Text>, or top apps; <Text style={styles.b}>lock</Text> the screen; change <Text style={styles.b}>volume</Text>; or open an app like Spotify or your browser.</P>
         <P>You can also just ask in Chat — “lock my PC”, “how much disk is free?”, “open spotify”.</P>
-        <P>The <Text style={styles.b}>Power</Text> section can shut down or restart the PC. Because the app can't turn it back on once it's off, shutdown/restart always go through an approval — tapping one (or asking the butler in chat) creates a card in the <Text style={styles.b}>Approvals</Text> tab that you confirm, with a 20s grace window and an Abort button.</P>
+        <P>The <Text style={styles.b}>Power</Text> section can shut down or restart the PC. Because the app can't turn it back on once it's off, shutdown/restart always go through an approval — tapping one (or asking in chat) creates a card in the <Text style={styles.b}>Approvals</Text> tab that you confirm, with a 20s grace window and an Abort button.</P>
       </Section>
 
-      <Section title="6 · Remind tab">
-        <P>Set a reminder in plain language. Type <Text style={styles.b}>what</Text> to remind you about and <Text style={styles.b}>when</Text> — like “in 2 hours”, “at 6pm”, or “tomorrow at 9am” — then tap Set reminder. The quick-pick chips fill common times.</P>
-        <P>When it's due, the butler fires a <Text style={styles.b}>notification on your PC</Text> and a <Text style={styles.b}>push to your phone</Text> (even with the app closed — tap it to jump to this tab). Reminders survive a restart, and you can cancel any pending one with the ✕.</P>
-        <P>You can also just ask in Chat — “remind me to call mum in 2 hours”.</P>
+      <Section title="5 · Memory tab">
+        <P>The butler keeps a durable memory of who you are. Type something to <Text style={styles.b}>remember</Text> — “I work nights”, “my dog is Rex” — or just mention it naturally in Chat and it's picked up <Text style={styles.b}>on its own</Text> (say “remember that…” to force it). Everything it knows is listed here; search it or delete entries with the ✕. Remembered facts come back automatically in every future chat.</P>
+        <P>The <Text style={styles.b}>Reminders</Text> view sets timed nudges in plain language — “in 2 hours”, “tomorrow at 9am”. When one is due, your phone gets a push (even with the app closed) and your PC pops a notification. Asking in Chat works too: “remind me to call mum in 2 hours”.</P>
       </Section>
 
-      <Section title="7 · Memory tab">
-        <P>The butler keeps a memory of who you are and what you care about. Type something to <Text style={styles.b}>remember</Text> — “I work nights”, “my dog is Rex”, a preference — and it's saved for good.</P>
-        <P>It also remembers things <Text style={styles.b}>on its own</Text> when you mention them in Chat. Everything it knows is listed here, and you can <Text style={styles.b}>search</Text> it or delete any entry with the ✕.</P>
-        <P>Remembered facts come back automatically in future chats, so the butler stays in context across conversations.</P>
+      <Section title="6 · Approvals tab">
+        <P>When the butler needs your OK for something sensitive (like shutting down the PC), the request shows here as a card — and pushes to your phone even with the app closed. Approve or deny; nothing runs until you decide.</P>
+      </Section>
+
+      <Section title="Make it yours">
+        <P>In Settings: <Text style={styles.b}>🎭 Persona</Text> shapes your butler's name, vibe, and personality everywhere it talks. <Text style={styles.b}>🤖 Chat model</Text> switches which model answers — heavier ones have more personality, lighter ones are faster. Takes effect on your next message, no restart.</P>
       </Section>
 
       <Section title="Commands (chat shortcuts)">
-        <P>Anything the tabs do, you can also type in Chat or send over WhatsApp:</P>
+        <P>Anything the tabs do, you can also type in Chat:</P>
         <P><Mono>/build snake-game a retro snake game</Mono></P>
         <P><Mono>/build snake-game --continue add sound effects</Mono></P>
         <P><Mono>/jobs</Mono> · <Mono>/awake 2h</Mono> · <Mono>/awake off</Mono></P>
@@ -76,9 +74,8 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
       </Section>
 
       <Section title="Good to know">
-        <P>When the butler needs your <Text style={styles.b}>approval</Text> for something sensitive (like shutting down the PC), it sends a push to your phone — you'll get it even with the app closed. Tap it to jump straight to the Approvals tab, then approve or deny.</P>
         <P>Your PC sleeps after 2 hours idle. Keep-awake stops it sleeping <Text style={styles.b}>while it's on</Text>, but the app can't wake a PC that's already asleep (hardware limit). If it's been a while, the PC may need a nudge in person before you can reach it.</P>
-        <P>Everything stays on your own network — nothing is exposed to the public internet.</P>
+        <P>Everything stays on your own network — chat, memory, and voice all run on your own hardware; nothing is exposed to the public internet.</P>
       </Section>
     </ScrollView>
   );

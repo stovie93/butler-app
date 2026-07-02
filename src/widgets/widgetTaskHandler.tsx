@@ -1,7 +1,7 @@
 import React from 'react';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
-import { chatOnce } from '../api';
-import { loadLastExchange, loadSettings, saveLastExchange } from '../settings';
+import { chatOnce, setChatSession } from '../api';
+import { loadLastExchange, loadSessionUser, loadSettings, saveLastExchange } from '../settings';
 import { ButlerWidget } from './ButlerWidget';
 
 const STATUS_PROMPT =
@@ -25,6 +25,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
         props.renderWidget(<ButlerWidget text="Checking on the computer…" loading />);
         try {
           const settings = await loadSettings();
+          // The widget runs headless — point at the app's current chat session
+          // instead of the module default (which may be a stale, cleared one).
+          setChatSession(await loadSessionUser());
           const reply = await chatOnce(settings, STATUS_PROMPT);
           await saveLastExchange('status', reply);
           props.renderWidget(<ButlerWidget text={reply} />);

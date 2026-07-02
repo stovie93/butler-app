@@ -24,6 +24,22 @@ const SETTINGS_KEY = 'butler.settings';
 const HISTORY_KEY = 'butler.history';
 const LAST_EXCHANGE_KEY = 'butler.lastExchange';
 const SESSION_KEY = 'butler.session';
+const USE_CLAUDE_KEY = 'butler.useClaude';
+
+// The Chat tab's 🤖 Use-Claude toggle, remembered across launches.
+export async function loadUseClaude(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(USE_CLAUDE_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function saveUseClaude(on: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(USE_CLAUDE_KEY, on ? '1' : '0');
+  } catch {}
+}
 
 // The gateway keys conversation context by the `user` field. Clearing the chat
 // rotates this id so the server starts a brand-new session (context "goes away")
