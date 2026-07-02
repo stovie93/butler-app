@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useKeyboardState } from 'react-native-keyboard-controller';
-import { dispatchBuild, setChatSession, streamChat, tryDispatchCommand } from '../api';
+import { dispatchBuild, journalChat, setChatSession, streamChat, tryDispatchCommand } from '../api';
 import {
   ChatMessage,
   loadHistory,
@@ -178,24 +178,26 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     saveHistory(next).catch(() => {});
   }, []);
 
-  // Wipe the visible thread AND rotate the gateway session so Clawdia forgets the
-  // conversation context — a genuinely fresh start, not just a cleared screen.
+  // Wipe the visible thread AND rotate the gateway session for a genuinely
+  // fresh start — but first send the transcript off to be journaled, so the
+  // butler keeps a one-paragraph memory of what this conversation was about.
   const clearChat = useCallback(() => {
     if (busy || messages.length === 0) return;
-    Alert.alert('Clear chat?', "This erases the conversation and Clawdia's memory of it.", [
+    Alert.alert('Clear chat?', 'This starts a fresh conversation. Clawdia keeps a short journal note of this one.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
         style: 'destructive',
         onPress: async () => {
           stopSpeaking();
+          journalChat(settings, messages).catch(() => {}); // fire-and-forget
           setChatSession(await resetSessionUser());
           persist([]);
           setError(null);
         },
       },
     ]);
-  }, [busy, messages.length, persist]);
+  }, [busy, messages, settings, persist]);
 
   const send = useCallback(async (textOverride?: string) => {
     const prompt = (textOverride ?? input).trim();

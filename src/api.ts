@@ -665,16 +665,24 @@ export type MemorySearchResult = {
   snippet: string;
 };
 
-async function memoryPost(settings: Settings, payload: Record<string, unknown>): Promise<any> {
+async function memoryPost(
+  settings: Settings,
+  payload: Record<string, unknown>,
+  timeoutMs?: number,
+): Promise<any> {
   requireSettings(settings);
-  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/memory`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.token}`,
+  const res = await fetchWithTimeout(
+    `${normalizeBaseUrl(settings.baseUrl)}/api/v1/memory`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.token}`,
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+    timeoutMs,
+  );
   if (!res.ok) {
     let msg = `Gateway answered HTTP ${res.status}`;
     try {
@@ -684,6 +692,22 @@ async function memoryPost(settings: Settings, payload: Record<string, unknown>):
     throw new Error(msg);
   }
   return res.json();
+}
+
+/**
+ * Journal a conversation before it's cleared: the gateway has the local model
+ * write a short summary into memory, so the next chat can recall what this one
+ * was about. Slow (a full model turn) — call it fire-and-forget.
+ */
+export async function journalChat(
+  settings: Settings,
+  messages: { role: string; content: string }[],
+): Promise<void> {
+  await memoryPost(
+    settings,
+    { action: 'journal', messages: messages.map((m) => ({ role: m.role, content: m.content })) },
+    180000, // a full local-model turn; fire-and-forget callers just let it ride
+  );
 }
 
 export async function listMemories(settings: Settings): Promise<Memory[]> {
