@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { KeyboardProvider, useKeyboardState } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Approval, checkHealth, streamApprovals, listApprovals, testConnection } from './src/api';
 import { ChatScreen } from './src/screens/ChatScreen';
@@ -158,6 +158,9 @@ function AppInner() {
   const [notifOpen, setNotifOpen] = useState(false);
   const { health, refresh: refreshHealth } = useHealth(settings);
   const pendingApprovals = usePendingApprovals(settings);
+  // Hide the tab bar while typing so the active screen reaches the very bottom
+  // of the window — the chat's keyboard padding (ChatScreen) relies on this.
+  const keyboardOpen = useKeyboardState((s) => s.isVisible);
 
   useEffect(() => {
     loadSettings().then((s) => {
@@ -223,6 +226,7 @@ function AppInner() {
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}
       </View>
 
+      {!keyboardOpen && (
       <View style={[styles.tabBar, { paddingBottom: insets.bottom + 10 }]}>
         {TABS.map((t) => (
           <Pressable key={t.key} style={styles.tab} onPress={() => setTab(t.key)}>
@@ -238,6 +242,7 @@ function AppInner() {
           </Pressable>
         ))}
       </View>
+      )}
 
       <SettingsModal
         visible={settingsOpen}

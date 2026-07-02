@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useKeyboardState } from 'react-native-keyboard-controller';
 import { dispatchBuild, setChatSession, streamChat, tryDispatchCommand } from '../api';
 import {
   ChatMessage,
@@ -112,10 +112,17 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   const [useClaude, setUseClaude] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const atBottomRef = useRef(true);
   // True when the pending input came from the mic — so we speak the reply back
   // (talk → hear; type → read).
   const voiceRef = useRef(false);
+  // Pad the whole screen by the keyboard's exact reported height so the input
+  // row always sits right on top of it. The tab bar hides while the keyboard is
+  // open (App.tsx watches the same state), so the padding maps 1:1 to screen
+  // space — no layout-measurement math to get wrong.
+  const keyboardPad = useKeyboardState((s) => (s.isVisible ? s.height : 0));
+  // The list renders inverted (offset 0 = latest message), so it opens at the
+  // bottom and stays pinned there while replies stream in.
+  const listData = useMemo(() => [...messages].reverse(), [messages]);
 
   useEffect(() => {
     loadHistory().then(setMessages);
@@ -183,7 +190,9 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     setInput('');
     setError(null);
     setBusy(true);
-    atBottomRef.current = true; // a fresh send should always scroll into view
+    // A fresh send should always snap the conversation into view, even if
+    // Jordan had scrolled way up. Offset 0 is the bottom on an inverted list.
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
 
     const userMsg: ChatMessage = { id: nextId(), role: 'user', content: prompt };
     const botMsg: ChatMessage = { id: nextId(), role: 'assistant', content: '', pending: true };
@@ -230,7 +239,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior="padding">
+    <View style={[styles.flex, keyboardPad > 0 && { paddingBottom: keyboardPad }]}>
       <View style={styles.toolbar}>
         <Pressable onPress={() => setUseClaude((on) => !on)} hitSlop={8} style={styles.toolBtn}>
           <Text style={styles.toolGlyph}>🤖</Text>
@@ -265,18 +274,15 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       </View>
       <FlatList
         ref={listRef}
-        data={messages}
+        data={listData}
+        // Only invert when there are messages — an inverted ListEmptyComponent
+        // renders upside down (long-standing RN quirk).
+        inverted={messages.length > 0}
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.list}
-        scrollEventThrottle={120}
-        onScroll={(e) => {
-          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-          atBottomRef.current =
-            contentOffset.y + layoutMeasurement.height >= contentSize.height - 60;
-        }}
-        onContentSizeChange={() => {
-          if (atBottomRef.current) listRef.current?.scrollToEnd({ animated: true });
-        }}
+        // Native bottom-pinning: stay put when scrolled up reading history, but
+        // follow new messages whenever we're within 100px of the bottom.
+        maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 100 }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>💬</Text>
@@ -357,7 +363,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
           </Pressable>
         )}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
