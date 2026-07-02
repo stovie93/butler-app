@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useKeyboardState } from 'react-native-keyboard-controller';
-import { dispatchBuild, journalChat, setChatSession, streamChat, tryDispatchCommand } from '../api';
+import { askBrain, dispatchBuild, journalChat, setChatSession, streamChat, tryDispatchCommand, waitForBrainAnswer } from '../api';
 import {
   ChatMessage,
   loadHistory,
@@ -29,11 +29,15 @@ import { speak, startListening, stopListening, stopSpeaking, useSpeechRecognitio
 let idCounter = 0;
 const nextId = () => `${Date.now()}-${++idCounter}`;
 
-// Clawdia ends a reply with a build marker when Jordan asks for something
-// buildable: [[BUILD: project=<kebab> | task=<one line>]]. We pull it out of the
-// visible text and turn it into a tap-to-build card (the optional "use Claude"
-// hand-off). See the code-dispatch before_prompt_build nudge on the gateway.
+// Action markers — the grammar the gateway teaches Clawdia: a reply may end
+// with [[NAME: key=value | key=value]] lines that aren't prose, they're actions
+// for the app to render as tap-to-act cards. Known markers get cards; unknown
+// ones are stripped (a newer gateway shouldn't leak raw tokens into an older
+// app); half-streamed markers never flash in the bubble.
 const BUILD_MARKER = /\[\[BUILD:\s*project=([^|\]]+?)\s*\|\s*task=([\s\S]+?)\]\]/i;
+const ASK_MARKER = /\[\[ASK:\s*question=([\s\S]+?)\]\]/i;
+const ANY_MARKER = /\[\[[A-Z_]{2,16}:[\s\S]*?\]\]/g;
+const PARTIAL_MARKER = /\[\[[A-Z_]*:?[^\]]*$/;
 
 type Build = { project: string; task: string };
 
@@ -47,15 +51,15 @@ const STARTERS = [
   "How's my PC doing?",
 ];
 
-function parseBuild(content: string): { text: string; build: Build | null } {
-  const m = content.match(BUILD_MARKER);
-  if (m) {
-    return { text: content.replace(BUILD_MARKER, '').trim(), build: { project: m[1].trim(), task: m[2].trim() } };
-  }
-  // Hide a half-streamed marker so the raw tokens never flash in the bubble.
-  const idx = content.indexOf('[[BUILD:');
-  if (idx !== -1) return { text: content.slice(0, idx).trim(), build: null };
-  return { text: content, build: null };
+function parseActions(content: string): { text: string; build: Build | null; ask: string | null } {
+  const b = content.match(BUILD_MARKER);
+  const a = content.match(ASK_MARKER);
+  const text = content.replace(ANY_MARKER, ' ').replace(PARTIAL_MARKER, '').trim();
+  return {
+    text,
+    build: b ? { project: b[1].trim(), task: b[2].trim() } : null,
+    ask: a ? a[1].trim() : null,
+  };
 }
 
 // The "hand this to Claude Code" affordance under a reply. Collapsed to a chip
@@ -105,6 +109,59 @@ function BuildCard({ settings, build, emphasized }: { settings: Settings; build:
         </Pressable>
         <Pressable style={styles.buildPrimary} onPress={go} disabled={state === 'sending'}>
           {state === 'sending' ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.buildPrimaryText}>Build it</Text>}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// The "ask the cloud brain" affordance under a reply. The tap is the consent —
+// escalating uses your Claude subscription, so it never happens on its own.
+// Answers drop into the chat (ChatScreen polls) and also arrive as a push.
+function AskCard({ question, onAsk }: { question: string; onAsk: (question: string) => Promise<void> }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [expanded, setExpanded] = useState(false);
+  const [err, setErr] = useState('');
+
+  const go = useCallback(async () => {
+    setState('sending');
+    setErr('');
+    try {
+      await onAsk(question);
+      setState('sent');
+    } catch (e) {
+      setState('error');
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [question, onAsk]);
+
+  if (state === 'sent') {
+    return (
+      <View style={styles.buildSent}>
+        <Text style={styles.buildSentText}>🧠 Asked Claude — the answer will drop in below.</Text>
+      </View>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <Pressable style={styles.buildChip} onPress={() => setExpanded(true)}>
+        <Text style={styles.buildChipText}>🧠 Ask Claude for a deeper answer →</Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.buildCard}>
+      <Text style={styles.buildCardTitle}>🧠 Ask Claude</Text>
+      <Text style={styles.buildCardTask} numberOfLines={5}>{question}</Text>
+      {state === 'error' && <Text style={styles.buildErr}>⚠ {err}</Text>}
+      <View style={styles.buildActions}>
+        <Pressable style={styles.buildGhost} onPress={() => setExpanded(false)} disabled={state === 'sending'}>
+          <Text style={styles.buildGhostText}>Not now</Text>
+        </Pressable>
+        <Pressable style={styles.buildPrimary} onPress={go} disabled={state === 'sending'}>
+          {state === 'sending' ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.buildPrimaryText}>Ask</Text>}
         </Pressable>
       </View>
     </View>
@@ -178,6 +235,45 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     saveHistory(next).catch(() => {});
   }, []);
 
+  // Functional-update flavour of persist for async flows that finish while the
+  // user may have kept chatting (a snapshot array would clobber newer messages).
+  const persistWith = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+    setMessages((prev) => {
+      const next = updater(prev);
+      saveHistory(next).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  // Tap on an AskCard: hand the question to Claude on the PC, drop a pending
+  // bubble into the thread, and fill it when the answer lands. If the app
+  // closes mid-wait, the gateway's push notification still delivers it.
+  const askClaude = useCallback(async (question: string) => {
+    const id = await askBrain(settings, question); // throws → the card shows the error
+    const bubbleId = nextId();
+    persistWith((prev) => [
+      ...prev,
+      { id: bubbleId, role: 'assistant', content: '🧠 Asking Claude — this can take a minute or two…', pending: true },
+    ]);
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    try {
+      const rec = await waitForBrainAnswer(settings, id);
+      const content = rec.status === 'done' && rec.answer
+        ? `🧠 ${rec.answer}`
+        : `⚠ ${rec.error || "Claude couldn't answer."}`;
+      persistWith((prev) => prev.map((m) => (m.id === bubbleId ? { ...m, content, pending: false } : m)));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      persistWith((prev) =>
+        prev.map((m) =>
+          m.id === bubbleId
+            ? { ...m, content: `⚠ Lost touch with the PC while waiting (${msg}) — the answer will arrive as a push.`, pending: false }
+            : m,
+        ),
+      );
+    }
+  }, [settings, persistWith]);
+
   // Wipe the visible thread AND rotate the gateway session for a genuinely
   // fresh start — but first send the transcript off to be journaled, so the
   // butler keeps a one-paragraph memory of what this conversation was about.
@@ -242,7 +338,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       );
       persist(next);
       if (reply.trim()) {
-        const spoken = parseBuild(reply.trim()).text; // never read the build marker aloud
+        const spoken = parseActions(reply.trim()).text; // never read action markers aloud
         saveLastExchange(prompt, spoken).catch(() => {});
         if (spoken && (wasVoice || autoSpeak)) speak(spoken); // spoke to her, or 🔊 on
       }
@@ -335,7 +431,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
         }
         renderItem={({ item }) => {
           if (item.role === 'assistant' && item.content) {
-            const { text, build } = parseBuild(item.content);
+            const { text, build, ask } = parseActions(item.content);
             const bubble = (
               <Pressable onPress={() => text && speak(text)}>
                 <View style={[styles.bubble, styles.bot]}>
@@ -347,12 +443,13 @@ export function ChatScreen({ settings }: { settings: Settings }) {
                 </View>
               </Pressable>
             );
-            // Show the build card only once the reply (and its marker) is complete.
-            if (build && !item.pending) {
+            // Action cards render only once the reply (and its markers) is complete.
+            if ((build || ask) && !item.pending) {
               return (
                 <View style={styles.botGroup}>
-                  {bubble}
-                  <BuildCard settings={settings} build={build} emphasized={useClaude} />
+                  {text ? bubble : null}
+                  {build && <BuildCard settings={settings} build={build} emphasized={useClaude} />}
+                  {ask && <AskCard question={ask} onAsk={askClaude} />}
                 </View>
               );
             }

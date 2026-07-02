@@ -35,6 +35,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P>Talk to your butler — it lives on your PC, knows the time, what's running, and what it remembers about you. Ask for <Text style={styles.b}>the latest news, weather, or prices</Text> and it looks them up on the live web.</P>
         <P>Tap <Text style={styles.b}>🎤 to talk</Text> instead of typing — when you speak to it, it speaks back. Tap any reply bubble to hear it aloud, or turn <Text style={styles.b}>🔊 Voice on</Text> to hear every reply. <Text style={styles.b}>🗑️ Clear</Text> wipes the conversation and starts genuinely fresh.</P>
         <P>The <Text style={styles.b}>🤖 Local/Claude</Text> toggle sets how build suggestions appear: on “Claude”, offers to hand work to Claude Code come pre-expanded; on “Local” they stay as a subtle chip.</P>
+        <P>For a genuinely hard question, say <Text style={styles.b}>“ask Claude …”</Text> (or tap the 🧠 chip when the butler offers) to hand it to the much stronger AI on your PC. The answer drops into the chat a minute or two later — and arrives as a push if you've closed the app. Asking uses your Claude subscription, so it only ever happens when you tap.</P>
       </Section>
 
       <Section title="3 · Build tab">

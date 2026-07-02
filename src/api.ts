@@ -816,3 +816,68 @@ export function streamApprovals(
 
   return stop;
 }
+
+// ---- Brain: optional cloud-brain escalation (butler-brain plugin) -----------
+// Clawdia ends a reply with [[ASK: question=…]] when a question deserves the
+// stronger model; the tap-to-ask card calls askBrain, then the answer fills
+// into the chat via waitForBrainAnswer (a push also lands if the app closes).
+
+export type BrainRecord = {
+  id: string;
+  question: string;
+  status: 'running' | 'done' | 'failed' | string;
+  answer?: string;
+  error?: string;
+};
+
+async function brainPost(settings: Settings, payload: Record<string, unknown>): Promise<any> {
+  requireSettings(settings);
+  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/api/v1/brain`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let msg = `Gateway answered HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+/** Hand a question to Claude on the PC. Returns the record id to poll. */
+export async function askBrain(settings: Settings, question: string): Promise<string> {
+  const body = await brainPost(settings, { action: 'ask', question });
+  if (typeof body?.id !== 'string') throw new Error('The gateway did not accept the question.');
+  return body.id;
+}
+
+/**
+ * Poll until Claude finishes. The gateway kills runs at its own timeout
+ * (default 5 min), so this always resolves; transient fetch hiccups are
+ * tolerated because the record survives on disk either way.
+ */
+export async function waitForBrainAnswer(settings: Settings, id: string): Promise<BrainRecord> {
+  const deadline = Date.now() + 360_000;
+  let misses = 0;
+  for (;;) {
+    try {
+      const body = await brainPost(settings, { action: 'get', id });
+      const rec = body?.record as BrainRecord | undefined;
+      if (rec && rec.status !== 'running') return rec;
+      misses = 0;
+    } catch (err) {
+      if (++misses >= 4) throw err;
+    }
+    if (Date.now() > deadline) {
+      return { id, question: '', status: 'failed', error: "Claude is taking unusually long — you'll get a push if it answers." };
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
