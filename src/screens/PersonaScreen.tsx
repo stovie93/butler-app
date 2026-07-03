@@ -18,6 +18,7 @@ export function PersonaScreen({ settings }: { settings: Settings }) {
   const [vibe, setVibe] = useState('');
   const [emoji, setEmoji] = useState('');
   const [personality, setPersonality] = useState('');
+  const [owner, setOwner] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -33,6 +34,7 @@ export function PersonaScreen({ settings }: { settings: Settings }) {
       setVibe(p.vibe);
       setEmoji(p.emoji);
       setPersonality(p.personality);
+      setOwner(p.owner ?? '');
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -59,6 +61,7 @@ export function PersonaScreen({ settings }: { settings: Settings }) {
         vibe: vibe.trim(),
         emoji: emoji.trim(),
         personality: personality.trim(),
+        owner: owner.trim(),
       });
       setPersona(p);
       setSaved(true);
@@ -101,6 +104,19 @@ export function PersonaScreen({ settings }: { settings: Settings }) {
       <Text style={styles.label}>Vibe</Text>
       <TextInput style={styles.input} value={vibe} onChangeText={setVibe} placeholder="bubbly & playful" placeholderTextColor={COLORS.textDim} />
 
+      <Text style={styles.label}>Your name</Text>
+      <TextInput
+        style={styles.input}
+        value={owner}
+        onChangeText={setOwner}
+        placeholder="What should it call you?"
+        placeholderTextColor={COLORS.textDim}
+      />
+      <Text style={styles.hint}>
+        Used everywhere: memories are saved as “{owner.trim() || 'you'} is…”, notifications and
+        briefings address you by it.
+      </Text>
+
       <Text style={styles.label}>Personality</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
@@ -125,6 +141,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: 18, gap: 8, paddingBottom: 40 },
   intro: { color: COLORS.textDim, fontSize: 14, lineHeight: 20, marginBottom: 6 },
+  hint: { color: COLORS.textDim, fontSize: 12.5, lineHeight: 18, marginTop: 4 },
   row2: { flexDirection: 'row', gap: 12 },
   nameCol: { flex: 1 },
   emojiCol: { width: 80 },

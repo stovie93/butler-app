@@ -60,7 +60,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
       </Section>
 
       <Section title="Make it yours">
-        <P>In Settings: <Text style={styles.b}>🎭 Persona</Text> shapes your butler's name, vibe, and personality everywhere it talks. <Text style={styles.b}>🤖 Chat model</Text> switches which model answers — heavier ones have more personality, lighter ones are faster. Takes effect on your next message, no restart.</P>
+        <P>In Settings: <Text style={styles.b}>🎭 Persona</Text> shapes your butler's name, vibe, and personality everywhere it talks — and <Text style={styles.b}>your name</Text>, which it uses for memories, briefings, and notifications. <Text style={styles.b}>🤖 Chat model</Text> switches which model answers — heavier ones have more personality, lighter ones are faster. Takes effect on your next message, no restart.</P>
       </Section>
 
       <Section title="Commands (chat shortcuts)">

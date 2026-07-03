@@ -601,6 +601,8 @@ export type Persona = {
   emoji: string;
   personality: string;
   signature: string;
+  /** The owner's name — what the butler calls you, everywhere. */
+  owner: string;
 };
 
 export async function getPersona(settings: Settings): Promise<Persona> {

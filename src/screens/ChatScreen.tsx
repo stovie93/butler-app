@@ -29,7 +29,7 @@ import { speak, startListening, stopListening, stopSpeaking, useSpeechRecognitio
 let idCounter = 0;
 const nextId = () => `${Date.now()}-${++idCounter}`;
 
-// Action markers — the grammar the gateway teaches Clawdia: a reply may end
+// Action markers — the grammar the gateway teaches the butler: a reply may end
 // with [[NAME: key=value | key=value]] lines that aren't prose, they're actions
 // for the app to render as tap-to-act cards. Known markers get cards; unknown
 // ones are stripped (a newer gateway shouldn't leak raw tokens into an older
@@ -43,7 +43,7 @@ type Build = { project: string; task: string };
 
 // Tap-to-send starters on an empty chat — one per real capability (live web
 // search, reminders, memory recall, PC control) so a fresh conversation shows
-// what Clawdia can actually do.
+// what the butler can actually do.
 const STARTERS = [
   "What's the latest news?",
   'Remind me to stretch in 30 minutes',
@@ -227,7 +227,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     voiceRef.current = true;
     const ok = await startListening();
     if (ok) setListening(true);
-    else setError('Microphone permission is needed to talk to Clawdia.');
+    else setError('Microphone permission is needed to talk to your butler.');
   }, [listening]);
 
   const persist = useCallback((next: ChatMessage[]) => {
@@ -279,7 +279,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
   // butler keeps a one-paragraph memory of what this conversation was about.
   const clearChat = useCallback(() => {
     if (busy || messages.length === 0) return;
-    Alert.alert('Clear chat?', 'This starts a fresh conversation. Clawdia keeps a short journal note of this one.', [
+    Alert.alert('Clear chat?', 'This starts a fresh conversation. Your butler keeps a short journal note of this one.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
@@ -309,7 +309,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     setError(null);
     setBusy(true);
     // A fresh send should always snap the conversation into view, even if
-    // Jordan had scrolled way up. Offset 0 is the bottom on an inverted list.
+    // you had scrolled way up. Offset 0 is the bottom on an inverted list.
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
 
     const userMsg: ChatMessage = { id: nextId(), role: 'user', content: prompt };
@@ -480,7 +480,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
             voiceRef.current = false; // typed, so don't speak the reply back
             setInput(t);
           }}
-          placeholder={listening ? 'Listening…' : 'Message Clawdia, or tap 🎤 to talk…'}
+          placeholder={listening ? 'Listening…' : 'Message your butler, or tap 🎤 to talk…'}
           placeholderTextColor={COLORS.textDim}
           multiline
           editable={!busy}
