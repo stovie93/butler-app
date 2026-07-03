@@ -18,7 +18,7 @@ exposed to the public internet, and your token never leaves your devices.
 | Tab | What you can do |
 | --- | --- |
 | **💬 Chat** | Stream a conversation with your assistant — voice input, spoken replies, live web search and pasted-link reading (handled server-side), tap-to-send starter prompts, and an optional "local Claude" toggle. Slash commands work here too. |
-| **🔨 Build** | Hand Claude Code a coding job (project + plain-English task, optional "continue last session") and watch every dispatched job with a **live log that auto-refreshes while it runs**. Keep the PC awake on demand (1h / 2h / 4h / Off). |
+| **⚡ Activity** | One live feed of everything Claude does on your PC — build jobs (tap for a **live log** while they run) and "ask Claude" questions with their answers. Dispatch a new build from the same screen, and keep the PC awake on demand (1h / 2h / 4h / Off). |
 | **🖥️ PC** | Live computer status (CPU / RAM / disk / uptime), running processes, and power actions — the risky ones ask for your approval first. |
 | **🧠 Memory** | Everything the assistant remembers about you — review, add, and delete facts — plus your reminders. |
 | **🛡️ Approvals** | The safety valve: when the agent wants to run a sensitive action (any shell command, power actions, builds), a card with the **exact action** appears here (and as a push) and nothing runs until you approve. |
@@ -51,7 +51,7 @@ arrive as push notifications even when the app is closed — see the push setup 
 - Chat context is held **server-side**, keyed by the `user` field (`butler-phone`), so the
   app only ever sends the newest message.
 - Chat streams replies as Server-Sent Events via `expo/fetch`.
-- Build / Jobs / Awake call the custom **`code-dispatch`** gateway plugin's JSON route.
+- The Activity feed calls the custom **`code-dispatch`** plugin (builds/jobs/awake) and the optional **`butler-brain`** plugin (Claude questions).
 - Dispatched builds run `claude -p` in streaming mode, so their logs fill in live.
 
 ---
@@ -169,8 +169,8 @@ src/settings.ts          AsyncStorage: gateway URL/token, chat history, toggles
 src/push.ts              FCM device-token registration
 src/voice.ts             speech-to-text input + spoken replies
 src/theme.ts             colors + small helpers
-src/screens/             Chat, BuildHub (Build+Jobs), Pc, MemoryHub (Memory+Reminders),
-                         Approvals, Persona, ModelPicker, Notifications, Help
+src/screens/             Chat, Activity (builds + Claude asks), Pc, MemoryHub (Memory+
+                         Reminders), Approvals, Persona, ModelPicker, Notifications, Help
 src/widgets/             home-screen widget + headless task handler
 plugins/                 Expo config plugins (release signing)
 scripts/gen-icon.mjs     renders the icon set from one SVG (needs `sharp`)

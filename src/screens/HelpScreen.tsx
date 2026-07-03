@@ -39,9 +39,9 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
         <P>For a genuinely hard question, say <Text style={styles.b}>“ask Claude …”</Text> (or tap the 🧠 chip when the butler offers) to hand it to the much stronger AI on your PC. The answer drops into the chat a minute or two later — and arrives as a push if you've closed the app. Asking uses your Claude subscription, so it only ever happens when you tap.</P>
       </Section>
 
-      <Section title="3 · Build tab">
-        <P>Give Claude Code a real coding job. Enter a <Text style={styles.b}>project name</Text> (a folder under your PC's repos) and describe what to build, then tap Dispatch. Switch to <Text style={styles.b}>Jobs</Text> to watch it run — <Text style={{ color: COLORS.warn }}>running</Text>, <Text style={{ color: COLORS.good }}>done</Text>, or <Text style={{ color: COLORS.danger }}>failed</Text> — and tap a job for its live log. Your phone gets a push when a build finishes.</P>
-        <P>Turn on <Text style={styles.b}>Continue</Text> to have it pick up where the last session on that project left off.</P>
+      <Section title="3 · Activity tab">
+        <P>One live feed of everything Claude does on your PC: <Text style={styles.b}>🔨 builds</Text> and <Text style={styles.b}>🧠 ask-Claude questions</Text>, newest first — <Text style={{ color: COLORS.warn }}>running</Text>, <Text style={{ color: COLORS.good }}>done</Text>, or <Text style={{ color: COLORS.danger }}>failed</Text>. Tap a build for its live log while it runs; tap a question to reread Claude's full answer. Your phone gets a push when a build finishes.</P>
+        <P>Tap <Text style={styles.b}>+ New build</Text> to give Claude Code a real coding job: a <Text style={styles.b}>project name</Text> (a folder under your PC's repos) and a plain-English task. Turn on <Text style={styles.b}>Continue</Text> to have it pick up where the last session on that project left off.</P>
         <P>The <Text style={styles.b}>Keep awake</Text> buttons stop your PC from sleeping for 1–4 hours (tap Off to release). Builds already keep it awake on their own.</P>
       </Section>
 

@@ -828,6 +828,7 @@ export type BrainRecord = {
   id: string;
   question: string;
   status: 'running' | 'done' | 'failed' | string;
+  createdAt?: string;
   answer?: string;
   error?: string;
 };
@@ -851,6 +852,15 @@ async function brainPost(settings: Settings, payload: Record<string, unknown>): 
     throw new Error(msg);
   }
   return res.json();
+}
+
+/**
+ * Recent Claude questions, newest first, for the Activity feed. The plugin is
+ * optional (needs Claude Code on the PC), so callers should tolerate failure.
+ */
+export async function listBrain(settings: Settings, limit = 20): Promise<BrainRecord[]> {
+  const body = await brainPost(settings, { action: 'list', limit });
+  return Array.isArray(body?.records) ? (body.records as BrainRecord[]) : [];
 }
 
 /** Hand a question to Claude on the PC. Returns the record id to poll. */

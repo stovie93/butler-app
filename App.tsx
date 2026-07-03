@@ -15,7 +15,7 @@ import { KeyboardProvider, useKeyboardState } from 'react-native-keyboard-contro
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Approval, checkHealth, streamApprovals, listApprovals, testConnection } from './src/api';
 import { ChatScreen } from './src/screens/ChatScreen';
-import { BuildHubScreen } from './src/screens/BuildHubScreen';
+import { ActivityScreen } from './src/screens/ActivityScreen';
 import { PcScreen } from './src/screens/PcScreen';
 import { MemoryHubScreen } from './src/screens/MemoryHubScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
@@ -31,7 +31,7 @@ import { COLORS } from './src/theme';
 type Tab = 'chat' | 'build' | 'pc' | 'memory' | 'approvals';
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'chat', label: 'Chat', icon: '💬' },
-  { key: 'build', label: 'Build', icon: '🔨' },
+  { key: 'build', label: 'Activity', icon: '⚡' },
   { key: 'pc', label: 'PC', icon: '🖥️' },
   { key: 'memory', label: 'Memory', icon: '🧠' },
   { key: 'approvals', label: 'Approvals', icon: '🛡️' },
@@ -243,7 +243,7 @@ function AppInner() {
 
       <View style={styles.body}>
         {tab === 'chat' && <ChatScreen settings={settings} />}
-        {tab === 'build' && <BuildHubScreen settings={settings} />}
+        {tab === 'build' && <ActivityScreen settings={settings} />}
         {tab === 'pc' && <PcScreen settings={settings} onNavigateToApprovals={() => setTab('approvals')} />}
         {tab === 'memory' && <MemoryHubScreen settings={settings} />}
         {tab === 'approvals' && <ApprovalsScreen settings={settings} />}

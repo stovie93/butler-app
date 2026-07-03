@@ -84,7 +84,7 @@ function BuildCard({ settings, build, emphasized }: { settings: Settings; build:
   if (state === 'sent') {
     return (
       <View style={styles.buildSent}>
-        <Text style={styles.buildSentText}>🚀 Sent “{build.project}” to Claude Code — watch it in the Build tab.</Text>
+        <Text style={styles.buildSentText}>🚀 Sent “{build.project}” to Claude Code — watch it in the Activity tab.</Text>
       </View>
     );
   }
