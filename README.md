@@ -86,14 +86,14 @@ host needs:
 1. Grab the latest APK from **[Releases](https://github.com/stovie93/butler-app/releases)**
    (or build from source, below), copy it to your phone, and install (allow installs from
    the source when prompted).
-2. Install the **Tailscale** app on the phone, sign in with the same account as the PC, and
-   turn the VPN on.
-3. Open Butler → **⚙ Settings**:
+2. Open Butler — the **first-run setup wizard** walks you through the rest: installing
+   Tailscale (same account as the PC, VPN on), entering your gateway URL + token with a
+   connection test, naming your butler (and telling it your name), and enabling
+   notifications. Rerun it anytime from **⚙ Settings → 🚀 Setup wizard**.
    - **Gateway URL** — your PC's Tailscale Serve URL, e.g. `https://your-pc.your-tailnet.ts.net`
      (or `http://<lan-ip>:18789` on the same network).
    - **Token** — the gateway's `gateway.auth.token`.
-   - Tap **Test** → expect "✓ Connected" → **Save**.
-4. Add the **Butler** widget from your launcher's widget list if you want one-tap status.
+3. Add the **Butler** widget from your launcher's widget list if you want one-tap status.
 
 > **Push notifications caveat:** the release APKs are built against the maintainer's
 > Firebase project, so pushes to a **closed** app (reminders, approvals, heartbeats) won't

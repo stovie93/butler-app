@@ -25,6 +25,23 @@ const HISTORY_KEY = 'butler.history';
 const LAST_EXCHANGE_KEY = 'butler.lastExchange';
 const SESSION_KEY = 'butler.session';
 const USE_CLAUDE_KEY = 'butler.useClaude';
+const ONBOARDED_KEY = 'butler.onboarded';
+
+// Whether the first-run wizard has been completed (or skipped). Existing
+// installs never see the wizard: having a gateway URL saved also counts.
+export async function loadOnboarded(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(ONBOARDED_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function saveOnboarded(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(ONBOARDED_KEY, '1');
+  } catch {}
+}
 
 // The Chat tab's 🤖 Use-Claude toggle, remembered across launches.
 export async function loadUseClaude(): Promise<boolean> {

@@ -24,6 +24,7 @@ export function HelpScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
       </P>
 
       <Section title="1 · One-time setup">
+        <P>The first launch walks you through all of this with a setup wizard — rerun it anytime from Settings → <Text style={styles.b}>🚀 Setup wizard</Text>. The short version:</P>
         <P>• Install the <Text style={styles.b}>Tailscale</Text> app on this phone and sign in with the same account as your PC, then turn its VPN on. This is what lets the app reach your computer from anywhere.</P>
         <P>• Open <Text style={styles.b}>Settings</Text> (the gear, top-right) and enter your gateway URL and token, then tap Test. You only do this once.</P>
         <Pressable style={styles.btn} onPress={onOpenSettings}>

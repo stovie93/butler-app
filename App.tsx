@@ -23,8 +23,9 @@ import { HelpScreen } from './src/screens/HelpScreen';
 import { PersonaScreen } from './src/screens/PersonaScreen';
 import { ModelPickerScreen } from './src/screens/ModelPickerScreen';
 import { NotificationsScreen } from './src/screens/NotificationsScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { registerForPush } from './src/push';
-import { loadSettings, saveSettings, Settings } from './src/settings';
+import { loadOnboarded, loadSettings, saveOnboarded, saveSettings, Settings } from './src/settings';
 import { COLORS } from './src/theme';
 
 type Tab = 'chat' | 'build' | 'pc' | 'memory' | 'approvals';
@@ -152,6 +153,7 @@ function AppInner() {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>('chat');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [personaOpen, setPersonaOpen] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -163,11 +165,23 @@ function AppInner() {
   const keyboardOpen = useKeyboardState((s) => s.isVisible);
 
   useEffect(() => {
-    loadSettings().then((s) => {
+    loadSettings().then(async (s) => {
       setSettings(s);
+      // True first run gets the wizard; an existing install that merely lost
+      // its URL (or someone who skipped the wizard) gets the settings modal.
+      if (!s.baseUrl && !(await loadOnboarded())) setOnboarding(true);
+      else if (!s.baseUrl) setSettingsOpen(true);
       setLoaded(true);
-      if (!s.baseUrl) setSettingsOpen(true);
     });
+  }, []);
+
+  const finishOnboarding = useCallback((s: Settings | null) => {
+    saveOnboarded().catch(() => {});
+    if (s?.baseUrl) {
+      setSettings(s);
+      saveSettings(s).catch(() => {});
+    }
+    setOnboarding(false);
   }, []);
 
   // Register this device for push once settings are valid (and whenever they
@@ -194,6 +208,15 @@ function AppInner() {
       <View style={[styles.root, styles.center]}>
         <StatusBar style="light" />
         <ActivityIndicator color={COLORS.accent} />
+      </View>
+    );
+  }
+
+  if (onboarding) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <StatusBar style="light" />
+        <OnboardingScreen initialSettings={settings} onDone={finishOnboarding} />
       </View>
     );
   }
@@ -259,6 +282,10 @@ function AppInner() {
         onOpenModels={() => {
           setSettingsOpen(false);
           setModelsOpen(true);
+        }}
+        onOpenWizard={() => {
+          setSettingsOpen(false);
+          setOnboarding(true);
         }}
         onSave={(s) => {
           setSettings(s);
@@ -350,6 +377,7 @@ function SettingsModal(props: {
   onOpenHelp: () => void;
   onOpenPersona: () => void;
   onOpenModels: () => void;
+  onOpenWizard: () => void;
   onSave: (s: Settings) => void;
 }) {
   const [baseUrl, setBaseUrl] = useState(props.settings.baseUrl);
@@ -428,6 +456,10 @@ function SettingsModal(props: {
             </Pressable>
             <Pressable style={styles.linkRow} onPress={props.onOpenHelp} hitSlop={6}>
               <Text style={styles.linkRowText}>❓  How it works</Text>
+              <Text style={styles.linkRowArrow}>›</Text>
+            </Pressable>
+            <Pressable style={styles.linkRow} onPress={props.onOpenWizard} hitSlop={6}>
+              <Text style={styles.linkRowText}>🚀  Setup wizard</Text>
               <Text style={styles.linkRowArrow}>›</Text>
             </Pressable>
           </View>
