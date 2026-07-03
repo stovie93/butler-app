@@ -131,6 +131,35 @@ cd android
 Install with `adb install -r app-release.apk` (USB debugging on) or by copying the APK to
 the phone.
 
+### Release signing (optional but recommended)
+
+Without any setup, release builds are signed with the throwaway debug keystore — fine for
+trying it out, but anyone can forge an "update" for a debug-signed app. To sign with a real
+key, create one at the repo root:
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias butler \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+…then create `release-signing.properties` next to it:
+
+```properties
+storeFile=release.keystore
+storePassword=your-store-password
+keyAlias=butler
+keyPassword=your-key-password
+```
+
+The `plugins/withReleaseSigning.js` config plugin picks it up automatically at prebuild;
+when the file is absent it falls back to debug signing. Both files are gitignored — never
+commit them, and **back the keystore up somewhere safe**: if you lose it, phones with your
+app installed will refuse every future update.
+
+> Switching signers (debug → release, or a new keystore) changes the app's signature, so
+> existing installs must be **uninstalled first** — app settings don't survive that, but the
+> setup wizard gets you back in a minute and everything server-side is untouched.
+
 ### Project layout
 
 ```
@@ -143,6 +172,7 @@ src/theme.ts             colors + small helpers
 src/screens/             Chat, BuildHub (Build+Jobs), Pc, MemoryHub (Memory+Reminders),
                          Approvals, Persona, ModelPicker, Notifications, Help
 src/widgets/             home-screen widget + headless task handler
+plugins/                 Expo config plugins (release signing)
 scripts/gen-icon.mjs     renders the icon set from one SVG (needs `sharp`)
 ```
 

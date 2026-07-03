@@ -38,6 +38,11 @@ yarn-error.*
 # Firebase (push) — secrets, kept off git
 google-services.json
 
+# Release signing — the key and its passwords stay off git. Back them up:
+# losing the keystore means existing installs can never be updated.
+release.keystore
+release-signing.properties
+
 # typescript
 *.tsbuildinfo
 
