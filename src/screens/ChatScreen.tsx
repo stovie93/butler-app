@@ -24,6 +24,7 @@ import {
   tryDispatchCommand,
   waitForBrainAnswer,
 } from '../api';
+import { LinkifiedText } from '../components/LinkifiedText';
 import { formatSize, installArtifact } from '../install';
 import {
   ChatMessage,
@@ -551,7 +552,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
                   {item.pending && !text ? (
                     <ActivityIndicator color={COLORS.textDim} size="small" />
                   ) : (
-                    <Text style={styles.bubbleText}>{text}</Text>
+                    <LinkifiedText text={text} style={styles.bubbleText} linkStyle={styles.link} />
                   )}
                 </View>
               </Pressable>
@@ -574,7 +575,13 @@ export function ChatScreen({ settings }: { settings: Settings }) {
               {item.pending && !item.content ? (
                 <ActivityIndicator color={COLORS.textDim} size="small" />
               ) : (
-                <Text style={styles.bubbleText}>{item.content}</Text>
+                <LinkifiedText
+                  text={item.content}
+                  style={styles.bubbleText}
+                  // User bubbles are accent-filled, so an accent link would be
+                  // invisible against them — underline in white instead.
+                  linkStyle={item.role === 'user' ? styles.linkOnAccent : styles.link}
+                />
               )}
             </View>
           );
@@ -641,6 +648,8 @@ const styles = StyleSheet.create({
   user: { alignSelf: 'flex-end', backgroundColor: COLORS.accent },
   bot: { alignSelf: 'flex-start', backgroundColor: COLORS.surface },
   bubbleText: { color: COLORS.text, fontSize: 15.5, lineHeight: 22 },
+  link: { color: COLORS.accent, textDecorationLine: 'underline' },
+  linkOnAccent: { color: '#fff', textDecorationLine: 'underline', fontWeight: '700' },
   botGroup: { alignSelf: 'flex-start', maxWidth: '90%', gap: 6 },
   buildChip: {
     alignSelf: 'flex-start',

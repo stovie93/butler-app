@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { getNotifications, Notification } from '../api';
+import { LinkifiedText } from '../components/LinkifiedText';
 import { Settings } from '../settings';
 import { COLORS } from '../theme';
 
@@ -58,7 +59,7 @@ export function NotificationsScreen({ settings }: { settings: Settings }) {
             <Text style={styles.icon}>{ICON[n.type] ?? '🔔'}</Text>
             <View style={styles.main}>
               <Text style={styles.title}>{n.title}</Text>
-              {!!n.body && <Text style={styles.body}>{n.body}</Text>}
+              {!!n.body && <LinkifiedText text={n.body} style={styles.body} linkStyle={styles.link} />}
               <Text style={styles.time}>{when(n.ts)}</Text>
             </View>
           </View>
@@ -78,6 +79,7 @@ const styles = StyleSheet.create({
   main: { flex: 1, gap: 2 },
   title: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   body: { color: COLORS.text, fontSize: 14, lineHeight: 19 },
+  link: { color: COLORS.accent, textDecorationLine: 'underline' },
   time: { color: COLORS.textDim, fontSize: 12, marginTop: 2 },
   error: { color: COLORS.danger, fontSize: 13.5, padding: 8 },
 });
