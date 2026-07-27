@@ -11,7 +11,20 @@ import {
   View,
 } from 'react-native';
 import { useKeyboardState } from 'react-native-keyboard-controller';
-import { askBrain, dispatchBuild, journalChat, setChatSession, streamChat, tryDispatchCommand, waitForBrainAnswer } from '../api';
+import {
+  askBrain,
+  dispatchBuild,
+  followBuild,
+  Job,
+  JobArtifact,
+  journalChat,
+  parseJobId,
+  setChatSession,
+  streamChat,
+  tryDispatchCommand,
+  waitForBrainAnswer,
+} from '../api';
+import { formatSize, installArtifact } from '../install';
 import {
   ChatMessage,
   loadHistory,
@@ -64,7 +77,7 @@ function parseActions(content: string): { text: string; build: Build | null; ask
 
 // The "hand this to Claude Code" affordance under a reply. Collapsed to a chip
 // by default; expanded (ready to tap) when the 🤖 Use-Claude toggle is on.
-function BuildCard({ settings, build, emphasized }: { settings: Settings; build: Build; emphasized: boolean }) {
+function BuildCard({ build, emphasized, onBuild }: { build: Build; emphasized: boolean; onBuild: (build: Build) => Promise<void> }) {
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [expanded, setExpanded] = useState(emphasized);
   const [err, setErr] = useState('');
@@ -73,18 +86,18 @@ function BuildCard({ settings, build, emphasized }: { settings: Settings; build:
     setState('sending');
     setErr('');
     try {
-      await dispatchBuild(settings, build.project, build.task, false);
+      await onBuild(build);
       setState('sent');
     } catch (e) {
       setState('error');
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [settings, build]);
+  }, [build, onBuild]);
 
   if (state === 'sent') {
     return (
       <View style={styles.buildSent}>
-        <Text style={styles.buildSentText}>🚀 Sent “{build.project}” to Claude Code — watch it in the Activity tab.</Text>
+        <Text style={styles.buildSentText}>🚀 Sent “{build.project}” to Claude Code — progress is below.</Text>
       </View>
     );
   }
@@ -111,6 +124,56 @@ function BuildCard({ settings, build, emphasized }: { settings: Settings; build:
           {state === 'sending' ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.buildPrimaryText}>Build it</Text>}
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+// The payoff card: a build finished and left something installable, so the
+// thread offers it right where the result was announced. The download runs
+// in-app because the gateway needs a bearer token — a plain link would 401.
+function InstallCard({ settings, message }: { settings: Settings; message: ChatMessage }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'error'>('idle');
+  const [pct, setPct] = useState(0);
+  const [err, setErr] = useState('');
+  const artifact = message.job?.artifact;
+
+  const go = useCallback(async () => {
+    if (!message.job || !artifact) return;
+    setState('busy');
+    setErr('');
+    setPct(0);
+    try {
+      await installArtifact(
+        settings,
+        { id: message.job.id, artifact: artifact as JobArtifact } as Job,
+        ({ bytesWritten, totalBytes }) => {
+          if (totalBytes > 0) setPct(Math.round((bytesWritten / totalBytes) * 100));
+        },
+      );
+      setState('idle');
+    } catch (e) {
+      setState('error');
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [settings, message, artifact]);
+
+  if (!artifact) return null;
+  return (
+    <View style={styles.installWrap}>
+      <Pressable style={styles.installBtn} onPress={go} disabled={state === 'busy'}>
+        {state === 'busy' ? (
+          <>
+            <ActivityIndicator color="#fff" size="small" />
+            <Text style={styles.installText}>{pct > 0 ? `Downloading ${pct}%` : 'Downloading…'}</Text>
+          </>
+        ) : (
+          <Text style={styles.installText}>
+            ⬇ Install {artifact.name}
+            {formatSize(artifact.size) ? ` · ${formatSize(artifact.size)}` : ''}
+          </Text>
+        )}
+      </Pressable>
+      {state === 'error' ? <Text style={styles.buildErr}>⚠ {err}</Text> : null}
     </View>
   );
 }
@@ -271,6 +334,56 @@ export function ChatScreen({ settings }: { settings: Settings }) {
             : m,
         ),
       );
+    }
+  }, [settings, persistWith]);
+
+  // Tap on a BuildCard: hand the job to Claude Code and keep a bubble in the
+  // thread alive for the whole build — live progress while it runs, then the
+  // butler's own write-up and an Install button when it lands. Without this the
+  // conversation went silent the moment a build started and never came back.
+  const startBuild = useCallback(async (build: Build) => {
+    const text = await dispatchBuild(settings, build.project, build.task, false);
+    const jobId = parseJobId(text);
+    if (!jobId) throw new Error(text.trim() || 'The PC did not return a job id.');
+
+    const bubbleId = nextId();
+    persistWith((prev) => [
+      ...prev,
+      {
+        id: bubbleId,
+        role: 'assistant',
+        content: `🔨 Building ${build.project} — Claude's on it…`,
+        pending: true,
+      },
+    ]);
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+
+    const setBubble = (patch: Partial<ChatMessage>) =>
+      persistWith((prev) => prev.map((m) => (m.id === bubbleId ? { ...m, ...patch } : m)));
+
+    try {
+      const job = await followBuild(settings, jobId, (progress) => {
+        setBubble({
+          content: `🔨 Building ${build.project}…\n🔧 ${progress.last}${
+            progress.tools > 1 ? `  ·  ${progress.tools} steps` : ''
+          }`,
+        });
+      });
+      const report = job?.report?.trim();
+      const head = job?.status === 'done' ? `🔨 ${build.project} — built.` : `⚠ ${build.project} — ${job?.status ?? 'ended'}.`;
+      setBubble({
+        content: report ? `${head}\n\n${report}` : head,
+        pending: false,
+        // Carries the Install button when the build produced an APK. Only the
+        // few fields the card needs — this whole thread goes into AsyncStorage.
+        job: job ? { id: job.id, project: job.project, artifact: job.artifact ?? null } : undefined,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setBubble({
+        content: `🔨 ${build.project} is building on the PC, but I lost track of it (${msg}). Check the Activity tab — it'll finish either way.`,
+        pending: false,
+      });
     }
   }, [settings, persistWith]);
 
@@ -444,12 +557,13 @@ export function ChatScreen({ settings }: { settings: Settings }) {
               </Pressable>
             );
             // Action cards render only once the reply (and its markers) is complete.
-            if ((build || ask) && !item.pending) {
+            if ((build || ask || item.job?.artifact) && !item.pending) {
               return (
                 <View style={styles.botGroup}>
                   {text ? bubble : null}
-                  {build && <BuildCard settings={settings} build={build} emphasized={useClaude} />}
+                  {build && <BuildCard build={build} emphasized={useClaude} onBuild={startBuild} />}
                   {ask && <AskCard question={ask} onAsk={askClaude} />}
+                  {item.job?.artifact ? <InstallCard settings={settings} message={item} /> : null}
                 </View>
               );
             }
@@ -548,6 +662,18 @@ const styles = StyleSheet.create({
   buildCardProject: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
   buildCardTask: { color: COLORS.textDim, fontSize: 13.5, lineHeight: 19 },
   buildErr: { color: COLORS.danger, fontSize: 12.5 },
+  installWrap: { gap: 6 },
+  installBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  installText: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
   buildActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 6 },
   buildGhost: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
   buildGhostText: { color: COLORS.textDim, fontSize: 14, fontWeight: '600' },

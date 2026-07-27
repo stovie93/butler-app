@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -19,11 +20,13 @@ import {
   getJobLog,
   getStatus,
   Job,
+  JobArtifact,
   listBrain,
   listJobs,
   setAwake,
   streamJobLog,
 } from '../api';
+import { formatSize, installArtifact } from '../install';
 import { Settings } from '../settings';
 import { COLORS, relativeTime, statusColor } from '../theme';
 
@@ -166,7 +169,20 @@ export function ActivityScreen({ settings }: { settings: Settings }) {
                 <Text style={styles.rowText} numberOfLines={2}>
                   {item.kind === 'build' ? item.job.task : item.ask.question}
                 </Text>
-                <Text style={[styles.status, { color: statusColor(st) }]}>{st}</Text>
+                <View style={styles.rowStatus}>
+                  <Text style={[styles.status, { color: statusColor(st) }]}>{st}</Text>
+                  {item.kind === 'build' && item.job.artifact ? (
+                    <Text style={styles.apkTag}>APK</Text>
+                  ) : null}
+                </View>
+                {/* While it runs, show what Claude is doing right now rather than
+                    leaving the row saying "running" for nine silent minutes. */}
+                {item.kind === 'build' && item.job.progress?.last ? (
+                  <Text style={styles.progressText} numberOfLines={1}>
+                    🔧 {item.job.progress.last}
+                    {item.job.progress.tools > 1 ? `  ·  ${item.job.progress.tools} steps` : ''}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           );
@@ -298,6 +314,13 @@ function JobSheet({
   const [log, setLog] = useState('');
   const [logLoading, setLogLoading] = useState(false);
   const [liveStatus, setLiveStatus] = useState('');
+  // The outcome the butler wrote up, plus whatever the build left installable.
+  // Seeded from the job row and refreshed when the stream ends, so a sheet that
+  // was open across the finish line fills in without a manual reload.
+  const [report, setReport] = useState<string | null>(null);
+  const [artifact, setArtifact] = useState<JobArtifact | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [installPct, setInstallPct] = useState(0);
 
   const loadLog = useCallback(async () => {
     if (!job) return;
@@ -315,8 +338,28 @@ function JobSheet({
     if (!job) return;
     setLiveStatus(job.status);
     setLog('');
+    setReport(job.report ?? null);
+    setArtifact(job.artifact ?? null);
+    setInstallPct(0);
     loadLog();
   }, [job, loadLog]);
+
+  // Hand the APK to Android's installer. Errors surface as an alert rather than
+  // inline text — this is a one-shot action, not a state the sheet sits in.
+  const install = useCallback(async () => {
+    if (!job || !artifact) return;
+    setInstalling(true);
+    setInstallPct(0);
+    try {
+      await installArtifact(settings, { ...job, artifact }, ({ bytesWritten, totalBytes }) => {
+        if (totalBytes > 0) setInstallPct(Math.round((bytesWritten / totalBytes) * 100));
+      });
+    } catch (err) {
+      Alert.alert('Install failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstalling(false);
+    }
+  }, [job, artifact, settings]);
 
   useEffect(() => {
     if (!job || liveStatus !== 'running') return;
@@ -334,6 +377,8 @@ function JobSheet({
           const updated = js.find((j) => j.id === jobId);
           if (updated && updated.status !== 'running') {
             setLiveStatus(updated.status);
+            if (updated.report) setReport(updated.report);
+            if (updated.artifact) setArtifact(updated.artifact);
             onFinished();
           }
         } catch {}
@@ -344,9 +389,11 @@ function JobSheet({
       onSnapshot: (l) => {
         if (!cancelled) setLog(l);
       },
-      onEnd: ({ status }) => {
+      onEnd: ({ status, report: endReport, artifact: endArtifact }) => {
         if (cancelled) return;
         setLiveStatus(status);
+        if (endReport) setReport(endReport);
+        if (endArtifact) setArtifact(endArtifact);
         onFinished(); // pick up the finished status in the feed
       },
       onError: () => startPolling(),
@@ -376,6 +423,40 @@ function JobSheet({
             {liveStatus === 'running' ? '  ● live' : ''}
           </Text>
           <Text style={styles.rowText}>{job?.task}</Text>
+
+          {/* The outcome in the butler's words, above the raw log — the log is
+              there when you want detail, not the first thing you have to read. */}
+          {report ? (
+            <>
+              <Text style={styles.label}>What happened</Text>
+              <Text style={styles.reportText}>{report}</Text>
+            </>
+          ) : liveStatus !== 'running' && liveStatus ? (
+            <Text style={styles.reportPending}>Writing up the result…</Text>
+          ) : null}
+
+          {artifact ? (
+            <Pressable
+              style={[styles.installBtn, installing && styles.installBtnBusy]}
+              onPress={install}
+              disabled={installing}
+            >
+              {installing ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.installText}>
+                    {installPct > 0 ? `Downloading ${installPct}%` : 'Downloading…'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.installText}>
+                  ⬇ Install {artifact.name}
+                  {formatSize(artifact.size) ? ` · ${formatSize(artifact.size)}` : ''}
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
+
           <Text style={styles.label}>{liveStatus === 'running' ? 'Log (updating live…)' : 'Log'}</Text>
           <ScrollView style={styles.logBox}>
             {logLoading ? (
@@ -489,4 +570,32 @@ const styles = StyleSheet.create({
   answerText: { color: COLORS.text, fontSize: 14.5, lineHeight: 21, marginTop: 10 },
   refreshBtn: { backgroundColor: COLORS.surface, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 4 },
   refreshText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  rowStatus: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  apkTag: {
+    color: COLORS.accent,
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    borderColor: COLORS.accent,
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  progressText: { color: COLORS.textDim, fontSize: 12, marginTop: 3 },
+  reportText: { color: COLORS.text, fontSize: 14.5, lineHeight: 21, marginTop: 4 },
+  reportPending: { color: COLORS.textDim, fontSize: 13.5, fontStyle: 'italic', marginTop: 8 },
+  installBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  installBtnBusy: { opacity: 0.75 },
+  installText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

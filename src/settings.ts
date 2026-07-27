@@ -12,6 +12,10 @@ export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   pending?: boolean;
+  // Set on the bubble a finished build resolves into, so the thread can offer
+  // the Install button right where the result was announced. Kept loosely typed
+  // to avoid a settings → api import cycle; history is JSON anyway.
+  job?: { id: string; project: string; artifact?: { type: string; name: string; size: number } | null };
 };
 
 export type LastExchange = {

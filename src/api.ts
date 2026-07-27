@@ -124,6 +124,19 @@ export async function tryDispatchCommand(
 
 // ---- Structured dispatch API used by the GUI screens ----
 
+/** What a finished build left behind that the phone can actually use. */
+export type JobArtifact = {
+  type: 'apk';
+  name: string;
+  size: number;
+};
+
+/** One-line "what is it doing right now", present only while a job runs. */
+export type JobProgress = {
+  tools: number;
+  last: string;
+};
+
 export type Job = {
   id: string;
   project: string;
@@ -131,6 +144,15 @@ export type Job = {
   status: 'running' | 'done' | 'failed' | string;
   started: string | null;
   finished: string | null;
+  exitCode?: number | null;
+  result?: { durationMs: number | null; costUsd: number | null; isError: boolean; summary: string } | null;
+  // The butler's own account of the outcome, written when the job landed. This
+  // is what the app shows instead of making you read a raw log.
+  report?: string | null;
+  reported?: boolean;
+  artifact?: JobArtifact | null;
+  files?: string[] | null;
+  progress?: JobProgress | null;
 };
 
 export type AwakeStatus = {
@@ -182,6 +204,80 @@ export async function listJobs(settings: Settings, limit = 30): Promise<Job[]> {
 export async function getJobLog(settings: Settings, jobId: string): Promise<string> {
   const body = await dispatchPost(settings, { action: 'jobLog', jobId });
   return typeof body?.log === 'string' ? body.log : '(no log)';
+}
+
+export async function getJob(settings: Settings, jobId: string): Promise<Job | null> {
+  const jobs = await listJobs(settings, 30);
+  return jobs.find((j) => j.id === jobId) ?? null;
+}
+
+/** Pull the job id out of dispatch-claude.ps1's "Dispatched job <id>" output. */
+export function parseJobId(text: string): string | null {
+  const m = String(text ?? '').match(/Dispatched job\s+([0-9]{8}-[0-9]{6})/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * Watch a build through to the end, reporting progress along the way.
+ *
+ * Polls rather than using the SSE log stream: one `jobsData` call returns both
+ * the live progress digest and — once it lands — the butler's report and any
+ * artifact, so the caller gets everything it needs from a single endpoint.
+ * Transient failures are tolerated (the PC may briefly drop off Tailscale);
+ * only a long unbroken run of them gives up.
+ */
+export async function followBuild(
+  settings: Settings,
+  jobId: string,
+  onProgress?: (p: JobProgress) => void,
+  opts: { intervalMs?: number; maxMs?: number } = {},
+): Promise<Job | null> {
+  const intervalMs = opts.intervalMs ?? 3000;
+  const maxMs = opts.maxMs ?? 60 * 60 * 1000;
+  const deadline = Date.now() + maxMs;
+  let consecutiveErrors = 0;
+  let lastProgress = '';
+  // Once the build is terminal, only wait this long for the write-up before
+  // showing the raw outcome — a wedged report must not hang the bubble.
+  let reportDeadline = 0;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    let job: Job | null = null;
+    try {
+      job = await getJob(settings, jobId);
+      consecutiveErrors = 0;
+    } catch {
+      // 10 straight misses (~30s) means the PC is genuinely gone, not just slow.
+      if (++consecutiveErrors >= 10) throw new Error('lost contact with the PC');
+      continue;
+    }
+    if (!job) continue;
+    if (job.status === 'running') {
+      const p = job.progress;
+      if (p?.last && p.last !== lastProgress) {
+        lastProgress = p.last;
+        onProgress?.(p);
+      }
+      continue;
+    }
+    // Terminal. Hold on briefly for the write-up so the bubble resolves straight
+    // into the butler's words instead of a bare "done" that changes later.
+    if (!reportDeadline) reportDeadline = Date.now() + 2 * 60 * 1000;
+    if (!job.report && !job.reported && Date.now() < reportDeadline) continue;
+    return job;
+  }
+  return getJob(settings, jobId);
+}
+
+/**
+ * Where the gateway serves a finished build's APK. Needs the gateway token, so
+ * it can't be handed to a browser or a notification tap — the app downloads it
+ * itself (see installArtifact in ./install).
+ */
+export function artifactUrl(settings: Settings, jobId: string): string {
+  requireSettings(settings);
+  return `${normalizeBaseUrl(settings.baseUrl)}/api/v1/code-dispatch/artifact?jobId=${encodeURIComponent(jobId)}`;
 }
 
 export async function setAwake(
@@ -330,7 +426,16 @@ export async function* streamChat(
   }
 }
 
-export type JobLogEnd = { status: string; result?: unknown; exitCode?: number | null };
+export type JobLogEnd = {
+  status: string;
+  result?: unknown;
+  exitCode?: number | null;
+  // The butler's spoken account of the build and anything installable it left
+  // behind — the stream holds open briefly at the end so these arrive with it.
+  report?: string | null;
+  artifact?: JobArtifact | null;
+  files?: string[] | null;
+};
 
 /**
  * Open the live job-log stream (SSE) for a running job. `onSnapshot` fires with
