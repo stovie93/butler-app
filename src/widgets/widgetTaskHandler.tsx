@@ -1,11 +1,17 @@
 import React from 'react';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { chatOnce, setChatSession } from '../api';
-import { loadLastExchange, loadSessionUser, loadSettings, saveLastExchange } from '../settings';
+import { loadLastExchange, loadSettings, saveLastExchange } from '../settings';
 import { ButlerWidget } from './ButlerWidget';
 
 const STATUS_PROMPT =
   'Quick status check from the home-screen widget: confirm you are up and note anything that needs my attention. Reply in plain text, max 40 words, no markdown.';
+
+// The widget's status pings live on their own gateway session, apart from the
+// Chat tab's. A health check needs no conversation history, and keeping it
+// separate means these throwaway pings never pollute — or race, since the
+// widget runs in its own headless process — the real chat's server-side context.
+const WIDGET_SESSION = 'butler-widget';
 
 async function lastText(): Promise<string> {
   const last = await loadLastExchange();
@@ -25,9 +31,9 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
         props.renderWidget(<ButlerWidget text="Checking on the computer…" loading />);
         try {
           const settings = await loadSettings();
-          // The widget runs headless — point at the app's current chat session
-          // instead of the module default (which may be a stale, cleared one).
-          setChatSession(await loadSessionUser());
+          // Use the widget's own dedicated session (never the Chat tab's), so a
+          // status ping neither pollutes nor races the real conversation.
+          setChatSession(WIDGET_SESSION);
           const reply = await chatOnce(settings, STATUS_PROMPT);
           await saveLastExchange('status', reply);
           props.renderWidget(<ButlerWidget text={reply} />);

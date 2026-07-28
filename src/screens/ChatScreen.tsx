@@ -428,8 +428,11 @@ export function ChatScreen({ settings }: { settings: Settings }) {
 
     const userMsg: ChatMessage = { id: nextId(), role: 'user', content: prompt };
     const botMsg: ChatMessage = { id: nextId(), role: 'assistant', content: '', pending: true };
-    let next = [...messages, userMsg, botMsg];
-    persist(next);
+    // Functional updates throughout, keyed by botMsg.id: a build or ask started
+    // earlier may still be streaming progress into its own bubble while this send
+    // runs (they don't set `busy`), and a snapshot-based write would clobber
+    // those concurrent updates — the very reason persistWith exists.
+    persistWith((prev) => [...prev, userMsg, botMsg]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -438,19 +441,20 @@ export function ChatScreen({ settings }: { settings: Settings }) {
     try {
       const command = await tryDispatchCommand(settings, prompt);
       if (command !== null) {
-        next = next.map((m) => (m.id === botMsg.id ? { ...m, content: command, pending: false } : m));
-        persist(next);
+        persistWith((prev) =>
+          prev.map((m) => (m.id === botMsg.id ? { ...m, content: command, pending: false } : m)),
+        );
         return;
       }
       for await (const delta of streamChat(settings, prompt, controller.signal)) {
         reply += delta;
-        next = next.map((m) => (m.id === botMsg.id ? { ...m, content: reply } : m));
-        setMessages(next);
+        setMessages((prev) => prev.map((m) => (m.id === botMsg.id ? { ...m, content: reply } : m)));
       }
-      next = next.map((m) =>
-        m.id === botMsg.id ? { ...m, content: reply.trim() || '(stopped)', pending: false } : m,
+      persistWith((prev) =>
+        prev.map((m) =>
+          m.id === botMsg.id ? { ...m, content: reply.trim() || '(stopped)', pending: false } : m,
+        ),
       );
-      persist(next);
       if (reply.trim()) {
         const spoken = parseActions(reply.trim()).text; // never read action markers aloud
         saveLastExchange(prompt, spoken).catch(() => {});
@@ -460,14 +464,14 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       if (reply.trim()) {
         // The stream dropped mid-reply. Keep what already arrived — losing
         // half an answer is worse than a banner explaining the cutoff.
-        next = next.map((m) =>
-          m.id === botMsg.id ? { ...m, content: reply.trim(), pending: false } : m,
+        persistWith((prev) =>
+          prev.map((m) => (m.id === botMsg.id ? { ...m, content: reply.trim(), pending: false } : m)),
         );
-        persist(next);
       } else {
-        // The send failed outright (e.g. PC asleep). Drop the pending bubbles
-        // and hand the prompt back so it can be retried without retyping.
-        persist(messages);
+        // The send failed outright (e.g. PC asleep). Drop just this send's two
+        // bubbles — not a snapshot restore, which would wipe any concurrent
+        // build/ask progress — and hand the prompt back to retry without retyping.
+        persistWith((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== botMsg.id));
         setInput((cur) => (cur.trim() ? cur : prompt));
       }
       setError(err instanceof Error ? err.message : String(err));
@@ -475,7 +479,7 @@ export function ChatScreen({ settings }: { settings: Settings }) {
       abortRef.current = null;
       setBusy(false);
     }
-  }, [input, busy, listening, autoSpeak, messages, settings, persist]);
+  }, [input, busy, listening, autoSpeak, settings, persistWith]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

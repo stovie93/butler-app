@@ -303,19 +303,29 @@ function chatHeaders(settings: Settings): Record<string, string> {
   return h;
 }
 
+// Unlike the streaming path (which only needs headers within its connect
+// window, then streams for as long as generation takes), a non-streaming call
+// must receive the WHOLE reply before the timeout fires. A cold local 20B model
+// routinely needs more than DEFAULT_TIMEOUT_MS to finish, so give it room.
+const ONE_SHOT_TIMEOUT_MS = 60000;
+
 /** One-shot, non-streaming request. Used by the home-screen widget. */
 export async function chatOnce(settings: Settings, prompt: string): Promise<string> {
   requireSettings(settings);
-  const res = await fetchWithTimeout(`${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`, {
-    method: 'POST',
-    headers: chatHeaders(settings),
-    body: JSON.stringify({
-      model: 'openclaw',
-      user: activeSessionUser,
-      stream: false,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+  const res = await fetchWithTimeout(
+    `${normalizeBaseUrl(settings.baseUrl)}/v1/chat/completions`,
+    {
+      method: 'POST',
+      headers: chatHeaders(settings),
+      body: JSON.stringify({
+        model: 'openclaw',
+        user: activeSessionUser,
+        stream: false,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    },
+    ONE_SHOT_TIMEOUT_MS,
+  );
   if (!res.ok) throw new Error(`Gateway answered HTTP ${res.status}: ${await res.text()}`);
   const body = await res.json();
   const content = body?.choices?.[0]?.message?.content;
