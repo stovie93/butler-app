@@ -762,7 +762,7 @@ export type Memory = {
   id: string;
   text: string;
   tags: string[];
-  source: 'jordan' | 'butler' | string;
+  source: 'user' | 'butler' | string;
   created: string;
 };
 
